@@ -196,12 +196,12 @@ def main():
         blocks = get_page_blocks(page_id)
         html = blocks_to_html(blocks)
 
-        # 1) WordPress 발행
-        try:
-            wp_id, wp_link = publish_to_wordpress(title, html)
-        except Exception as e:
-            print(f"[ERROR] WordPress publish failed: {e}")
-            continue
+        # # 1) WordPress 발행
+        # try:
+        #     wp_id, wp_link = publish_to_wordpress(title, html)
+        # except Exception as e:
+        #     print(f"[ERROR] WordPress publish failed: {e}")
+        #     continue
 
         # 2) Tistory 발행
         try:
