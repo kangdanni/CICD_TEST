@@ -1,0 +1,19 @@
+name: Notify Slack on push
+
+on:
+  push:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send message to Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          msg="📢 New push to ${{ github.repository }} on ${{ github.ref }}"
+          payload=$(jq -n --arg t "$msg" '{text: $t}')
+
+          curl -X POST -H "Content-type: application/json" \
+            --data "$payload" \
+            "$SLACK_WEBHOOK_URL"
