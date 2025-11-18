@@ -33,7 +33,6 @@ jobs:
           TISTORY_BLOG_NAME: ${{ secrets.TISTORY_BLOG_NAME }}
           WPCOM_CLIENT_ID: ${{ secrets.WPCOM_CLIENT_ID }}
           WPCOM_CLIENT_SECRET: ${{ secrets.WPCOM_CLIENT_SECRET }}
-          WP_USERNAME: ${{ secrets.WP_USERNAME }}
           
         run: |
           python scripts/publish_from_notion.py
