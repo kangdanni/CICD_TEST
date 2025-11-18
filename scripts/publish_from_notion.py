@@ -121,20 +121,33 @@ def blocks_to_html(blocks):
 
     return "\n".join(html_parts)
 
+#WordPress Token 
+def get_wpcom_token():
+    resp = requests.post(
+        "https://public-api.wordpress.com/oauth2/token",
+        data={
+            "grant_type": "password",
+            "client_id": WPCOM_CLIENT_ID,
+            "client_secret": WPCOM_CLIENT_SECRET,
+            "username": WPCOM_USERNAME,
+            "password": WPCOM_APP_PASSWORD,
+        },
+    )
+    resp.raise_for_status()
+    return resp.json()["access_token"]
+
 
 def publish_to_wordpress(title, content_html):
-    url = f"{WP_BASE_URL.rstrip('/')}/wp-json/wp/v2/posts"
-    auth = (WP_USERNAME, WP_APP_PASSWORD)
-    payload = {
-        "title": title,
-        "content": content_html,
-        "status": "publish",
+    token = get_wpcom_token()
+    url = "https://public-api.wordpress.com/wp/v2/sites/dangam.home.blog/posts"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
     }
-    resp = requests.post(url, auth=auth, json=payload)
+    payload = {"title": title, "content": content_html, "status": "publish"}
+    resp = requests.post(url, headers=headers, json=payload)
+    print(resp.status_code, resp.text)
     resp.raise_for_status()
-    data = resp.json()
-    print(f"[WP] Published: {data.get('id')} - {data.get('link')}")
-    return data.get("id"), data.get("link")
 
 
 def publish_to_tistory(title, content_html):
