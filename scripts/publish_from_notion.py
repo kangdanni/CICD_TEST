@@ -133,7 +133,7 @@ def get_wpcom_token():
             "client_id": WPCOM_CLIENT_ID,
             "client_secret": WPCOM_CLIENT_SECRET,
             "username": WP_USERNAME,
-            "password": WPCOM_APP_PASSWORD,
+            "password": WP_APP_PASSWORD,
         },
     )
     resp.raise_for_status()
