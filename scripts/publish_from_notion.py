@@ -153,14 +153,14 @@ def publish_to_wordpress(title, content_html):
 
 
 def publish_to_tistory(title, content_html):
-    url = "https://www.tistory.com/apis/post/write"
+    url = "https://www.tistory.com/apis/post/write?"
     data = {
         "access_token": TISTORY_ACCESS_TOKEN,
         "output": "json",
         "blogName": TISTORY_BLOG_NAME,
         "title": title,
         "content": content_html,
-        "visibility": 3,  # 0: 비공개, 3: 발행
+        "visibility": 0,  # 0: 비공개, 3: 발행
     }
     resp = requests.post(url, data=data)
     resp.raise_for_status()
