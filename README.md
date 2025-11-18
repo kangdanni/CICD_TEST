@@ -4,5 +4,8 @@
 
 
 ### Slack Webhook 연동
+- github/workflows/*.yml 생성
+- Webhook URL Secret변수로 관리
+- 
 2025.11.18
 
