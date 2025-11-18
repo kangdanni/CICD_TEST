@@ -7,10 +7,11 @@ NOTION_DATABASE_ID = os.environ["NOTION_DATABASE_ID"]
 WP_BASE_URL = os.environ["WP_BASE_URL"]
 WP_USERNAME = os.environ["WP_USERNAME"]
 WP_APP_PASSWORD = os.environ["WP_APP_PASSWORD"]
-TISTORY_ACCESS_TOKEN = os.environ["TISTORY_ACCESS_TOKEN"]
-TISTORY_BLOG_NAME = os.environ["TISTORY_BLOG_NAME"]
 WPCOM_CLIENT_ID = os.environ["WPCOM_CLIENT_ID"]
 WPCOM_CLIENT_SECRET= os.environ["WPCOM_CLIENT_SECRET"]
+TISTORY_ACCESS_TOKEN = os.environ["TISTORY_ACCESS_TOKEN"]
+TISTORY_BLOG_NAME = os.environ["TISTORY_BLOG_NAME"]
+
 
 NOTION_BASE_URL = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
@@ -131,8 +132,8 @@ def get_wpcom_token():
             "grant_type": "password",
             "client_id": WPCOM_CLIENT_ID,
             "client_secret": WPCOM_CLIENT_SECRET,
-            "username": WPCOM_USERNAME,
-            "password": WPCOM_APP_PASSWORD,
+            "username": WP_USERNAME,
+            "password": WP_APP_PASSWORD,
         },
     )
     resp.raise_for_status()
@@ -153,14 +154,14 @@ def publish_to_wordpress(title, content_html):
 
 
 def publish_to_tistory(title, content_html):
-    url = "https://www.tistory.com/apis/post/write"
+    url = "https://www.tistory.com/apis/post/write?"
     data = {
         "access_token": TISTORY_ACCESS_TOKEN,
         "output": "json",
         "blogName": TISTORY_BLOG_NAME,
         "title": title,
         "content": content_html,
-        "visibility": 3,  # 0: 비공개, 3: 발행
+        "visibility": 0,  # 0: 비공개, 3: 발행
     }
     resp = requests.post(url, data=data)
     resp.raise_for_status()
@@ -203,12 +204,12 @@ def main():
             print(f"[ERROR] WordPress publish failed: {e}")
             continue
 
-        # 2) Tistory 발행
-        try:
-            tistory_id = publish_to_tistory(title, html)
-        except Exception as e:
-            print(f"[ERROR] Tistory publish failed: {e}")
-            continue
+        # # 2) Tistory 발행
+        # try:
+        #     tistory_id = publish_to_tistory(title, html)
+        # except Exception as e:
+        #     print(f"[ERROR] Tistory publish failed: {e}")
+        #     continue
 
         # 3) Notion 상태 업데이트
         try:
