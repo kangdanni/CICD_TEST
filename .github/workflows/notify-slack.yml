@@ -39,8 +39,6 @@ jobs:
           
           *Commit:*
           ${COMMIT_MSG} (by *${COMMIT_AUTHOR}*)
-          <${COMMIT_URL}|View commit on GitHub>
-
           
           *Changed files:*
           \`\`\`
