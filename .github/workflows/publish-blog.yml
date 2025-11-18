@@ -1,0 +1,35 @@
+name: Publish blog posts from Notion
+
+on:
+  workflow_dispatch:   # 수동 실행
+  schedule:
+    - cron: '0 * * * *'   # 매 시간 0분마다 실행 (UTC 기준)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests
+
+      - name: Run Notion → WP/Tistory publisher
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          TISTORY_ACCESS_TOKEN: ${{ secrets.TISTORY_ACCESS_TOKEN }}
+          TISTORY_BLOG_NAME: ${{ secrets.TISTORY_BLOG_NAME }}
+        run: |
+          python scripts/publish_from_notion.py
