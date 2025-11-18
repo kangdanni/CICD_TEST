@@ -132,7 +132,7 @@ def get_wpcom_token():
             "grant_type": "password",
             "client_id": WPCOM_CLIENT_ID,
             "client_secret": WPCOM_CLIENT_SECRET,
-            "username": WPCOM_USERNAME,
+            "username": WP_USERNAME,
             "password": WPCOM_APP_PASSWORD,
         },
     )
