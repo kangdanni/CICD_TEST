@@ -7,10 +7,11 @@ NOTION_DATABASE_ID = os.environ["NOTION_DATABASE_ID"]
 WP_BASE_URL = os.environ["WP_BASE_URL"]
 WP_USERNAME = os.environ["WP_USERNAME"]
 WP_APP_PASSWORD = os.environ["WP_APP_PASSWORD"]
+WPCOM_CLIENT_ID = os.environ["WPCOM_CLIENT_ID"]
+WPCOM_CLIENT_SECRET= os.environ["WPCOM_CLIENT_SECRET"]
 TISTORY_ACCESS_TOKEN = os.environ["TISTORY_ACCESS_TOKEN"]
 TISTORY_BLOG_NAME = os.environ["TISTORY_BLOG_NAME"]
-# WPCOM_CLIENT_ID = os.environ["WPCOM_CLIENT_ID"]
-# WPCOM_CLIENT_SECRET= os.environ["WPCOM_CLIENT_SECRET"]
+
 
 NOTION_BASE_URL = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
@@ -196,19 +197,19 @@ def main():
         blocks = get_page_blocks(page_id)
         html = blocks_to_html(blocks)
 
-        # # 1) WordPress 발행
-        # try:
-        #     wp_id, wp_link = publish_to_wordpress(title, html)
-        # except Exception as e:
-        #     print(f"[ERROR] WordPress publish failed: {e}")
-        #     continue
-
-        # 2) Tistory 발행
+        # 1) WordPress 발행
         try:
-            tistory_id = publish_to_tistory(title, html)
+            wp_id, wp_link = publish_to_wordpress(title, html)
         except Exception as e:
-            print(f"[ERROR] Tistory publish failed: {e}")
+            print(f"[ERROR] WordPress publish failed: {e}")
             continue
+
+        # # 2) Tistory 발행
+        # try:
+        #     tistory_id = publish_to_tistory(title, html)
+        # except Exception as e:
+        #     print(f"[ERROR] Tistory publish failed: {e}")
+        #     continue
 
         # 3) Notion 상태 업데이트
         try:
