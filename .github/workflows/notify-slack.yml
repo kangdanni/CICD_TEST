@@ -6,13 +6,40 @@ on:
 jobs:
   notify:
     runs-on: ubuntu-latest
+
     steps:
+      # 1) 코드 체크아웃 (이전 커밋과 비교하려면 최소 2개 필요)
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      # 2) Slack으로 보낼 메시지 만들기 + 전송
       - name: Send message to Slack
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          msg="📢 New push to ${{ github.repository }} on ${{ github.ref }}"
-          payload=$(jq -n --arg t "$msg" '{text: $t}')
+          REPO="${{ github.repository }}"
+          BRANCH="${{ github.ref }}"
+
+          # 변경된 파일 목록만 출력 (파일명만)
+          FILES=$(git diff --name-only HEAD~1 HEAD || echo "no previous commit")
+
+          # GitHub 비교 링크 (여러 커밋이 한 번에 푸시되었을 때 전체 diff 보는 링크)
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+          COMPARE_URL="https://github.com/${REPO}/compare/${BEFORE}...${AFTER}"
+
+          TEXT="📦 *New push on* \`${REPO}\` (\`${BRANCH}\`)
+
+          *Changed files:*
+          \`\`\`
+          ${FILES}
+          \`\`\`
+
+          <${COMPARE_URL}|View full changes on GitHub>"
+
+          payload=$(jq -n --arg t "$TEXT" '{text: $t}')
 
           curl -X POST -H "Content-type: application/json" \
             --data "$payload" \
