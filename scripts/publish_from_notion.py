@@ -140,17 +140,28 @@ def get_wpcom_token():
 
 
 def publish_to_wordpress(title, content_html):
-    token = get_wpcom_token()
-    url = "https://public-api.wordpress.com/wp/v2/sites/dangam.home.blog/posts"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
+    """
+    설치형 WordPress (wp-json/wp/v2/posts) 기준 게시 함수
+    - Basic Auth (username + application password) 사용
+    """
+    url = f"{WP_BASE_URL.rstrip('/')}/wp-json/wp/v2/posts"
+    auth = (WP_USERNAME, WP_APP_PASSWORD)
+    payload = {
+        "title": title,
+        "content": content_html,
+        "status": "publish",  # 필요하면 'draft'로 바꿔서 임시저장도 가능
     }
-    payload = {"title": title, "content": content_html, "status": "publish"}
-    resp = requests.post(url, headers=headers, json=payload)
-    print(resp.status_code, resp.text)
-    resp.raise_for_status()
 
+    print(f"[DEBUG][WP] POST {url}")
+    print(f"[DEBUG][WP] username={WP_USERNAME}")
+
+    resp = requests.post(url, auth=auth, json=payload)
+
+
+    resp.raise_for_status()
+    data = resp.json()
+    print(f"[WP] Published: {data.get('id')} - {data.get('link')}")
+    return data.get("id"), data.get("link")
 
 def publish_to_tistory(title, content_html):
     url = "https://www.tistory.com/apis/post/write"
