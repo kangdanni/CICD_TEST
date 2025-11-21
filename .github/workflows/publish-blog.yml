@@ -3,7 +3,7 @@ name: Publish blog posts from Notion
 on:
   workflow_dispatch:   # 수동 실행
   schedule:
-    - cron: '0 * * * *'   # 매 시간 0분마다 실행 (UTC 기준)
+    - cron: '0 18 * * *'   # 매 시간 0분마다 실행 (UTC 기준)
 
 jobs:
   publish:
