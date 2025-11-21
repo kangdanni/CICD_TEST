@@ -214,12 +214,12 @@ def main():
             print(f"[ERROR] WordPress publish failed: {e}")
             continue
 
-        # 2) Tistory 발행
-        try:
-            tistory_id = publish_to_tistory(title, html)
-        except Exception as e:
-            print(f"[ERROR] Tistory publish failed: {e}")
-            continue
+        # # 2) Tistory 발행
+        # try:
+        #     tistory_id = publish_to_tistory(title, html)
+        # except Exception as e:
+        #     print(f"[ERROR] Tistory publish failed: {e}")
+        #     continue
 
         # 3) Notion 상태 업데이트
         try:
