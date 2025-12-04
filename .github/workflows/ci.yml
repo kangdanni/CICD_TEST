@@ -47,6 +47,8 @@ jobs:
 
       # 2) 테스트 & 커버리지
       - name: Run tests with coverage
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           pytest --junitxml=report.xml --cov=app --cov-report=xml
 
