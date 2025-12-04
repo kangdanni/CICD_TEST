@@ -210,7 +210,7 @@ jobs:
         run: |
           python tools/security_gate.py bandit-report.json pip-audit-report.json
 
-      #17) (선택) Jira에 리포트 첨부하고 싶다면, 아래 주석 풀고 JIRA_* Secrets 세팅
+      #17) JIRA에 해당 리포트를 첨부한다.
       - name: Upload security reports to Jira
         if: github.event_name == 'pull_request' && steps.jira.outputs.issue_key != ''
         env:
