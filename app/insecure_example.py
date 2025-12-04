@@ -2,6 +2,7 @@
 import subprocess
 import pickle
 
+
 def run_system_command(user_input: str) -> None:
     """
     일부러 취약하게 작성한 예제 함수입니다.
@@ -24,7 +25,6 @@ def insecure_temp_file():
     with open(path, "w") as f:
         f.write("This is insecure temp file.")
     return path
-
 
 
 def load_untrusted_data(data: bytes):
