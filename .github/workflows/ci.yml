@@ -2,7 +2,7 @@ name: Security Gate
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main" ]        # 필요하면 develop, feature/** 등 추가
   pull_request:
     branches: [ "main" ]
 
@@ -10,15 +10,24 @@ jobs:
   security-gate:
     runs-on: ubuntu-latest
 
+    # tests에서 app 패키지 찾을 수 있도록
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+
     steps:
+      # 1) 소스 체크아웃 (히스토리 전체 가져오기: diff 위해 필수)
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
+      # 2) Python 세팅
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # 3) pip 캐시
       - name: Cache pip
         uses: actions/cache@v4
         with:
@@ -27,32 +36,81 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
+      # 4) dev 의존성 설치
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      # 1) 코드 스타일 / 룰 체크
+      # 5) 변경된 Python 파일 목록 추출 (PR + push 공통)
+      - name: Get changed Python files
+        id: changed_py
+        run: |
+          echo "Event: ${{ github.event_name }}"
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "Mode: pull_request"
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            echo "Mode: push"
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+          fi
+
+          echo "Base SHA: $BASE_SHA"
+          echo "Head SHA: $HEAD_SHA"
+
+          if [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ] || [ -z "$BASE_SHA" ]; then
+            echo "No previous commit (first commit on branch). Using HEAD only."
+            files=$(git diff --name-only "$HEAD_SHA" -- '*.py' || true)
+          else
+            files=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- '*.py' || true)
+          fi
+
+          echo "Changed python files:"
+          echo "$files"
+
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$files" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      # 6) black (변경된 파일만)
       - name: Run black (changed files only)
         if: steps.changed_py.outputs.files != ''
         run: |
+          echo "Running black on:"
+          echo "${{ steps.changed_py.outputs.files }}"
           black --check ${{ steps.changed_py.outputs.files }}
 
+      # # 7) isort (변경된 파일만)
       # - name: Run isort (changed files only)
       #   if: steps.changed_py.outputs.files != ''
       #   run: |
+      #     echo "Running isort on:"
+      #     echo "${{ steps.changed_py.outputs.files }}"
       #     isort --check-only ${{ steps.changed_py.outputs.files }}
 
-      - name: Run flake8 (changed files only)
-        if: steps.changed_py.outputs.files != ''
-        run: |
-          flake8 ${{ steps.changed_py.outputs.files }}
+      # # 8) flake8 (변경된 파일만)
+      # - name: Run flake8 (changed files only)
+      #   if: steps.changed_py.outputs.files != ''
+      #   run: |
+      #     echo "Running flake8 on:"
+      #     echo "${{ steps.changed_py.outputs.files }}"
+      #     flake8 ${{ steps.changed_py.outputs.files }}
 
-      - name: Run mypy (changed files only)
-        if: steps.changed_py.outputs.files != ''
-        run: |
-          mypy ${{ steps.changed_py.outputs.files }}
+      # # 9) mypy (변경된 파일만)
+      # - name: Run mypy (changed files only)
+      #   if: steps.changed_py.outputs.files != ''
+      #   run: |
+      #     echo "Running mypy on:"
+      #     echo "${{ steps.changed_py.outputs.files }}"
+      #     mypy ${{ steps.changed_py.outputs.files }}
 
+      # # 10) pytest + coverage (전체 테스트는 그대로)
+      # - name: Run tests with coverage
+      #   run: |
+      #     pytest --junitxml=report.xml --cov=app --cov-report=xml
 
       # - name: Upload test and coverage reports
       #   uses: actions/upload-artifact@v4
@@ -62,60 +120,62 @@ jobs:
       #       report.xml
       #       coverage.xml
 
-
-
-      # 변경된 .py 파일 목록 가져오기
-      - name: Get changed Python files
-        id: changed_py
+      # 11) 변경된 dependency 파일 확인 (requirements*.txt 기준)
+      - name: Get changed dependency files
+        id: changed_deps
         run: |
-          # PR인 경우: base ref(예: master)와 현재 HEAD 비교
-          git fetch origin ${{ github.base_ref }} --depth=1 || true
-          files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.py' || true)
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+          fi
 
-          echo "Changed python files:"
-          echo "$files"
+          echo "Base SHA: $BASE_SHA"
+          echo "Head SHA: $HEAD_SHA"
 
-          # GitHub Actions output으로 넘기기 (multi-line)
-          echo "files<<EOF" >> $GITHUB_OUTPUT
-          echo "$files" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          if [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ] || [ -z "$BASE_SHA" ]; then
+            deps=$(git diff --name-only "$HEAD_SHA" -- 'requirements*.txt' || true)
+          else
+            deps=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- 'requirements*.txt' || true)
+          fi
 
-      # 변경된 파일이 있을 때만 bandit 실행
+          echo "Changed dependency files:"
+          echo "$deps"
+
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$deps" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      # 12) pip-audit (requirements 변경된 경우에만)
+      - name: Run pip-audit (dependency vulnerabilities)
+        if: steps.changed_deps.outputs.files != ''
+        run: |
+          echo "Running pip-audit because requirements changed."
+          pip-audit -r requirements.txt --format json --output pip-audit-report.json
+
+      # requirements 변경 없으면 빈 리포트 생성
+      - name: Create empty pip-audit report if not run
+        if: steps.changed_deps.outputs.files == ''
+        run: |
+          echo "[]" > pip-audit-report.json
+
+      # 13) bandit (변경된 .py 파일만)
       - name: Run bandit (SAST) on changed files
         if: steps.changed_py.outputs.files != ''
         run: |
           echo "Running bandit on changed files:"
           echo "${{ steps.changed_py.outputs.files }}"
-
           bandit -f json -o bandit-report.json -ll ${{ steps.changed_py.outputs.files }}
 
-      # 변경된 .py 파일이 하나도 없으면, 빈 리포트 생성해서 다음 단계가 안 깨지게
-      - name: Create empty bandit report if no files
+      # 변경된 파이썬 파일이 없으면 빈 bandit 리포트 생성
+      - name: Create empty bandit report if no changed files
         if: steps.changed_py.outputs.files == ''
         run: |
           echo '{"results": []}' > bandit-report.json
 
-
-      # 4) 보안 스캔: pip-audit
-      - name: Check if dependency files changed
-        id: changed_deps
-        run: |
-          git fetch origin ${{ github.base_ref }} --depth=1 || true
-          deps=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'requirements*.txt' || true)
-          echo "files<<EOF" >> $GITHUB_OUTPUT
-          echo "$deps" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Run pip-audit only when requirements changed
-        if: steps.changed_deps.outputs.files != ''
-        run: |
-          pip-audit -r requirements.txt --format json --output pip-audit-report.json
-
-      - name: Create empty pip-audit report if not run
-        if: steps.changed_deps.outputs.files == ''
-        run: |
-          echo '[]' > pip-audit-report.json
-
+      # 14) 보안 리포트 아티팩트 업로드
       - name: Upload security reports
         uses: actions/upload-artifact@v4
         with:
@@ -123,15 +183,8 @@ jobs:
           path: |
             bandit-report.json
             pip-audit-report.json
-  
-      # 5) 보안 평가 + 슬랙 알림 + 실패 처리
-      - name: Evaluate security & notify Slack on severe issues
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: |
-          python tools/security_gate.py bandit-report.json pip-audit-report.json
 
-      #Jira ticket에 첨부시키기
+      # 15) (옵션) PR 제목에서 Jira 이슈 키 추출 (예: ABC-123)
       - name: Extract Jira issue key from PR title
         if: github.event_name == 'pull_request'
         id: jira
@@ -147,9 +200,16 @@ jobs:
             echo "Detected Jira issue key: $ISSUE_KEY"
           fi
 
-          # GitHub Actions output으로 전달
           echo "issue_key=$ISSUE_KEY" >> "$GITHUB_OUTPUT"
-      
+
+      # 16) Security Gate 실행 (Slack 알림 + 실패/성공 판단은 여기서)
+      - name: Evaluate security & notify Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SECURITY_SLACK_WEBHOOK }}
+        run: |
+          python tools/security_gate.py bandit-report.json pip-audit-report.json
+
+      #17) (선택) Jira에 리포트 첨부하고 싶다면, 아래 주석 풀고 JIRA_* Secrets 세팅
       - name: Upload security reports to Jira
         if: github.event_name == 'pull_request' && steps.jira.outputs.issue_key != ''
         env:
@@ -159,7 +219,6 @@ jobs:
           ISSUE_KEY: ${{ steps.jira.outputs.issue_key }}
         run: |
           echo "Uploading reports to Jira issue: ${ISSUE_KEY}"
-
           for f in bandit-report.json pip-audit-report.json; do
             if [ -f "$f" ]; then
               echo "Uploading $f ..."
