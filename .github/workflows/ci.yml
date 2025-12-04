@@ -15,6 +15,11 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}
 
     steps:
+
+      - name: Debug event name
+        run: |
+          echo "GitHub event name: ${{ github.event_name }}"
+
       # 1) 소스 체크아웃 (히스토리 전체 가져오기: diff 위해 필수)
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -202,6 +207,7 @@ jobs:
           fi
 
           echo "issue_key=$ISSUE_KEY" >> "$GITHUB_OUTPUT"
+          
 
       # 16) Security Gate 실행 (Slack 알림 + 실패/성공 판단은 여기서)
       - name: Evaluate security & notify Slack
@@ -212,7 +218,7 @@ jobs:
 
       #17) JIRA에 해당 리포트를 첨부한다.
       - name: Upload security reports to Jira
-        if: always() && github.event_name == 'pull_request' && steps.jira.outputs.issue_key != ''
+        if: always() && steps.jira.outputs.issue_key != ''
         env:
           JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
