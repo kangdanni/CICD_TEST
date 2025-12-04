@@ -14,7 +14,7 @@ def run_system_command(user_input: str) -> None:
 
 def hardcoded_password():
     # B105: 하드코딩된 비밀번호
-    password = "SuperSecretPassword123!"  # nosec
+    password = "SuperSecretPassword123!2"  # nosec
     return password
 
 
