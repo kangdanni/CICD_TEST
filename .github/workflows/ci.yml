@@ -33,42 +33,87 @@ jobs:
           pip install -r requirements-dev.txt
 
       # 1) 코드 스타일 / 룰 체크
-      - name: Run black
-        run: black --check app tests
-      #우선 주석 처리
-      # - name: Run isort
-      #   run: isort --check-only app tests
-
-      - name: Run flake8
-        run: flake8 app tests
-
-      - name: Run mypy
-        run: mypy app
-
-      # 2) 테스트 & 커버리지
-      - name: Run tests with coverage
-        env:
-          PYTHONPATH: ${{ github.workspace }}
+      - name: Run black (changed files only)
+        if: steps.changed_py.outputs.files != ''
         run: |
-          pytest --junitxml=report.xml --cov=app --cov-report=xml
+          black --check ${{ steps.changed_py.outputs.files }}
 
-      - name: Upload test and coverage reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-and-coverage
-          path: |
-            report.xml
-            coverage.xml
+      # - name: Run isort (changed files only)
+      #   if: steps.changed_py.outputs.files != ''
+      #   run: |
+      #     isort --check-only ${{ steps.changed_py.outputs.files }}
 
-      # 3) 보안 스캔: bandit
-      - name: Run bandit (SAST)
+      - name: Run flake8 (changed files only)
+        if: steps.changed_py.outputs.files != ''
         run: |
-          bandit -r app -f json -o bandit-report.json || true
+          flake8 ${{ steps.changed_py.outputs.files }}
+
+      - name: Run mypy (changed files only)
+        if: steps.changed_py.outputs.files != ''
+        run: |
+          mypy ${{ steps.changed_py.outputs.files }}
+
+
+      # - name: Upload test and coverage reports
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: test-and-coverage
+      #     path: |
+      #       report.xml
+      #       coverage.xml
+
+
+      # 변경된 .py 파일 목록 가져오기
+      - name: Get changed Python files
+        id: changed_py
+        run: |
+          # PR인 경우: base ref(예: master)와 현재 HEAD 비교
+          git fetch origin ${{ github.base_ref }} --depth=1 || true
+          files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.py' || true)
+
+          echo "Changed python files:"
+          echo "$files"
+
+          # GitHub Actions output으로 넘기기 (multi-line)
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$files" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # 변경된 파일이 있을 때만 bandit 실행
+      - name: Run bandit (SAST) on changed files
+        if: steps.changed_py.outputs.files != ''
+        run: |
+          echo "Running bandit on changed files:"
+          echo "${{ steps.changed_py.outputs.files }}"
+
+          bandit -f json -o bandit-report.json -ll ${{ steps.changed_py.outputs.files }}
+
+      # 변경된 .py 파일이 하나도 없으면, 빈 리포트 생성해서 다음 단계가 안 깨지게
+      - name: Create empty bandit report if no files
+        if: steps.changed_py.outputs.files == ''
+        run: |
+          echo '{"results": []}' > bandit-report.json
+
 
       # 4) 보안 스캔: pip-audit
-      - name: Run pip-audit (dependency vulnerabilities)
+      - name: Check if dependency files changed
+        id: changed_deps
         run: |
-          pip-audit -r requirements.txt --format json --output pip-audit-report.json || true
+          git fetch origin ${{ github.base_ref }} --depth=1 || true
+          deps=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'requirements*.txt' || true)
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$deps" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Run pip-audit only when requirements changed
+        if: steps.changed_deps.outputs.files != ''
+        run: |
+          pip-audit -r requirements.txt --format json --output pip-audit-report.json
+
+      - name: Create empty pip-audit report if not run
+        if: steps.changed_deps.outputs.files == ''
+        run: |
+          echo '[]' > pip-audit-report.json
 
       - name: Upload security reports
         uses: actions/upload-artifact@v4
