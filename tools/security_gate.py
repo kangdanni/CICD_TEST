@@ -39,25 +39,30 @@ def analyze_bandit(report: Dict[str, Any]) -> List[Dict[str, Any]]:
 def analyze_pip_audit(report: Any) -> List[Dict[str, Any]]:
     if not report:
         return []
+
     severe: List[Dict[str, Any]] = []
 
-    # pip-audit JSON 포맷 기준 예시
-    # [
-    #   {
-    #     "name": "example",
-    #     "version": "1.0.0",
-    #     "vulns": [
-    #       {
-    #         "id": "PYSEC-...",
-    #         "severity": "HIGH",
-    #         "fix_version": "1.0.1"
-    #       }
-    #     ]
-    #   }
-    # ]
-    for item in report:
+    # 최신 pip-audit JSON 포맷 대응
+    # - dict 형태: {"dependencies": [ {...}, {...} ]}
+    # - 예전/다른 포맷: [ {...}, {...} ] 리턴할 수도 있으니 둘 다 처리
+    if isinstance(report, dict):
+        items = report.get("dependencies", [])
+    elif isinstance(report, list):
+        items = report
+    else:
+        print(f"[WARN] Unexpected pip-audit JSON type: {type(report)}")
+        return []
+
+    for item in items:
+        # item이 dict인지 방어
+        if not isinstance(item, dict):
+            continue
+
         vulns = item.get("vulns", [])
         for v in vulns:
+            if not isinstance(v, dict):
+                continue
+
             severity = (v.get("severity") or "").upper()
             if severity in PIP_AUDIT_SEVERITY_THRESHOLD:
                 severe.append(
@@ -66,10 +71,13 @@ def analyze_pip_audit(report: Any) -> List[Dict[str, Any]]:
                         "version": item.get("version"),
                         "id": v.get("id"),
                         "severity": severity,
-                        "fix_version": v.get("fix_version"),
+                        # pip-audit는 보통 fix_versions (list) 를 씀
+                        "fix_versions": v.get("fix_versions"),
                     }
                 )
+
     return severe
+
 
 
 def send_slack(text: str) -> None:
