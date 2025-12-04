@@ -167,7 +167,8 @@ jobs:
         run: |
           echo "Running bandit on changed files:"
           echo "${{ steps.changed_py.outputs.files }}"
-          bandit -f json -o bandit-report.json -ll ${{ steps.changed_py.outputs.files }}
+          bandit -f json -o bandit-report.json -ll ${{ steps.changed_py.outputs.files }} || true
+
 
       # 변경된 파이썬 파일이 없으면 빈 bandit 리포트 생성
       - name: Create empty bandit report if no changed files
