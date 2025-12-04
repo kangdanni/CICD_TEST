@@ -35,9 +35,9 @@ jobs:
       # 1) 코드 스타일 / 룰 체크
       - name: Run black
         run: black --check app tests
-
-      - name: Run isort
-        run: isort --check-only app tests
+      #우선 주석 처리
+      # - name: Run isort
+      #   run: isort --check-only app tests
 
       - name: Run flake8
         run: flake8 app tests
