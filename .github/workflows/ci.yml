@@ -212,7 +212,7 @@ jobs:
 
       #17) JIRA에 해당 리포트를 첨부한다.
       - name: Upload security reports to Jira
-        if: github.event_name == 'pull_request' && steps.jira.outputs.issue_key != ''
+        if: always() && github.event_name == 'pull_request' && steps.jira.outputs.issue_key != ''
         env:
           JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
@@ -220,6 +220,7 @@ jobs:
           ISSUE_KEY: ${{ steps.jira.outputs.issue_key }}
         run: |
           echo "Uploading reports to Jira issue: ${ISSUE_KEY}"
+
           for f in bandit-report.json pip-audit-report.json; do
             if [ -f "$f" ]; then
               echo "Uploading $f ..."
