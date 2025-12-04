@@ -1,6 +1,4 @@
 # app/insecure_example.py
-
-import os
 import subprocess
 
 
