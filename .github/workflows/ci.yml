@@ -79,6 +79,6 @@ jobs:
       # 5) 보안 평가 + 슬랙 알림 + 실패 처리
       - name: Evaluate security & notify Slack on severe issues
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SECURITY_SLACK_WEBHOOK }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           python tools/security_gate.py bandit-report.json pip-audit-report.json
