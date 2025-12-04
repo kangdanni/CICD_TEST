@@ -63,6 +63,7 @@ jobs:
       #       coverage.xml
 
 
+
       # 변경된 .py 파일 목록 가져오기
       - name: Get changed Python files
         id: changed_py
@@ -122,10 +123,53 @@ jobs:
           path: |
             bandit-report.json
             pip-audit-report.json
-
+  
       # 5) 보안 평가 + 슬랙 알림 + 실패 처리
       - name: Evaluate security & notify Slack on severe issues
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           python tools/security_gate.py bandit-report.json pip-audit-report.json
+
+      #Jira ticket에 첨부시키기
+      - name: Extract Jira issue key from PR title
+        if: github.event_name == 'pull_request'
+        id: jira
+        run: |
+          title="${{ github.event.pull_request.title }}"
+          echo "PR title: $title"
+
+          ISSUE_KEY=$(echo "$title" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | head -n 1 || true)
+
+          if [ -z "$ISSUE_KEY" ]; then
+            echo "No Jira issue key found in PR title."
+          else
+            echo "Detected Jira issue key: $ISSUE_KEY"
+          fi
+
+          # GitHub Actions output으로 전달
+          echo "issue_key=$ISSUE_KEY" >> "$GITHUB_OUTPUT"
+      
+      - name: Upload security reports to Jira
+        if: github.event_name == 'pull_request' && steps.jira.outputs.issue_key != ''
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          ISSUE_KEY: ${{ steps.jira.outputs.issue_key }}
+        run: |
+          echo "Uploading reports to Jira issue: ${ISSUE_KEY}"
+
+          for f in bandit-report.json pip-audit-report.json; do
+            if [ -f "$f" ]; then
+              echo "Uploading $f ..."
+              curl -D- \
+                -u "${JIRA_EMAIL}:${JIRA_API_TOKEN}" \
+                -X POST \
+                -H "X-Atlassian-Token: no-check" \
+                -F "file=@${f}" \
+                "${JIRA_BASE_URL}/rest/api/2/issue/${ISSUE_KEY}/attachments"
+            else
+              echo "File $f not found, skipping."
+            fi
+          done
