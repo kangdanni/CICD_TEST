@@ -1,5 +1,6 @@
 # app/calculator.py
 
+
 def add(a: float, b: float) -> float:
     """두 수를 더한다."""
     return a + b
