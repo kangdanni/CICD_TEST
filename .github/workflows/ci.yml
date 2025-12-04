@@ -190,24 +190,52 @@ jobs:
             bandit-report.json
             pip-audit-report.json
 
-      # 15) (옵션) PR 제목에서 Jira 이슈 키 추출 (예: ABC-123)
-      - name: Extract Jira issue key from PR title
-        if: github.event_name == 'pull_request'
+      # # 15) (옵션) PR 제목에서 Jira 이슈 키 추출 (예: ABC-123)
+      # - name: Extract Jira issue key from PR title
+      #   if: github.event_name == 'pull_request'
+      #   id: jira
+      #   run: |
+      #     title="${{ github.event.pull_request.title }}"
+      #     echo "PR title: $title"
+
+      #     ISSUE_KEY=$(echo "$title" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | head -n 1 || true)
+
+      #     if [ -z "$ISSUE_KEY" ]; then
+      #       echo "No Jira issue key found in PR title."
+      #     else
+      #       echo "Detected Jira issue key: $ISSUE_KEY"
+      #     fi
+
+      #     echo "issue_key=$ISSUE_KEY" >> "$GITHUB_OUTPUT"
+      
+       #15) (옵션) 커밋 제목에서 Jira 이슈 키 추출 (예: ABC-123)
+      - name: Extract Jira issue key from commit message
         id: jira
         run: |
-          title="${{ github.event.pull_request.title }}"
-          echo "PR title: $title"
+          # 이벤트 타입에 따라 사용할 SHA 선택
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            TARGET_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            TARGET_SHA="${{ github.sha }}"
+          fi
 
-          ISSUE_KEY=$(echo "$title" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | head -n 1 || true)
+          echo "Target SHA: $TARGET_SHA"
+
+          # 해당 커밋 메시지 가져오기
+          msg=$(git log -1 --pretty=%B "$TARGET_SHA")
+          echo "Commit message: $msg"
+
+          # 예: [SKTL-8330] ..., SKTL-8330: ..., fix SKTL-8330 등
+          ISSUE_KEY=$(echo "$msg" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | head -n 1 || true)
 
           if [ -z "$ISSUE_KEY" ]; then
-            echo "No Jira issue key found in PR title."
+            echo "No Jira issue key found in commit message."
           else
             echo "Detected Jira issue key: $ISSUE_KEY"
           fi
 
           echo "issue_key=$ISSUE_KEY" >> "$GITHUB_OUTPUT"
-          
+
 
       # 16) Security Gate 실행 (Slack 알림 + 실패/성공 판단은 여기서)
       - name: Evaluate security & notify Slack
