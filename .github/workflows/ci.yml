@@ -206,7 +206,7 @@ jobs:
       # 16) Security Gate 실행 (Slack 알림 + 실패/성공 판단은 여기서)
       - name: Evaluate security & notify Slack
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SECURITY_SLACK_WEBHOOK }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           python tools/security_gate.py bandit-report.json pip-audit-report.json
 
