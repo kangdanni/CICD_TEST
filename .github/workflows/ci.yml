@@ -1,0 +1,84 @@
+name: Security Gate
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  security-gate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      # 1) 코드 스타일 / 룰 체크
+      - name: Run black
+        run: black --check app tests
+
+      - name: Run isort
+        run: isort --check-only app tests
+
+      - name: Run flake8
+        run: flake8 app tests
+
+      - name: Run mypy
+        run: mypy app
+
+      # 2) 테스트 & 커버리지
+      - name: Run tests with coverage
+        run: |
+          pytest --junitxml=report.xml --cov=app --cov-report=xml
+
+      - name: Upload test and coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-and-coverage
+          path: |
+            report.xml
+            coverage.xml
+
+      # 3) 보안 스캔: bandit
+      - name: Run bandit (SAST)
+        run: |
+          bandit -r app -f json -o bandit-report.json || true
+
+      # 4) 보안 스캔: pip-audit
+      - name: Run pip-audit (dependency vulnerabilities)
+        run: |
+          pip-audit -r requirements.txt --format json --output pip-audit-report.json || true
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+            pip-audit-report.json
+
+      # 5) 보안 평가 + 슬랙 알림 + 실패 처리
+      - name: Evaluate security & notify Slack on severe issues
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SECURITY_SLACK_WEBHOOK }}
+        run: |
+          python tools/security_gate.py bandit-report.json pip-audit-report.json
