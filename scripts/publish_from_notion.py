@@ -144,6 +144,26 @@ def blocks_to_html(blocks):
             html_parts.append(
                 f'<pre><code class="language-{lang}">{text}</code></pre>'
             )
+        #이미지 업로드 추가
+        elif btype == "image":
+            img = block["image"]
+            if img["type"] == "file":
+                img_url = img["file"]["url"]
+            else:  # "external"
+                img_url = img["external"]["url"]
+
+            caption = rich_text_to_plain(img.get("caption", []))
+            try:
+                wp_img_url = upload_image_to_wordpress_from_url(img_url)
+                figure_html = f'<figure><img src="{wp_img_url}" alt="{caption}"/>'
+                if caption:
+                    figure_html += f"<figcaption>{caption}</figcaption>"
+                figure_html += "</figure>"
+                html_parts.append(figure_html)
+            except Exception as e:
+                print(f"[WARN] Failed to handle image block: {e}")
+                # 실패 시 Notion URL 그대로라도 넣고 싶으면:
+                # html_parts.append(f'<p><img src="{img_url}" alt="{caption}"/></p>')
 
         else:
             # 지원 안 하는 타입은 그냥 텍스트만
@@ -204,6 +224,39 @@ def get_wp_tag_ids_from_slugs(slugs):
             print(f"[WARN] Failed to get/create tag '{s}': {e}")
     return tag_ids
 
+def upload_image_to_wordpress_from_url(image_url, filename=None):
+    """
+    Notion 파일/외부 URL에서 이미지를 받아서
+    WordPress 미디어 라이브러리에 업로드하고 최종 URL을 반환.
+    """
+    print(f"[WP][IMAGE] Downloading image from Notion: {image_url}")
+    img_resp = requests.get(image_url)
+    img_resp.raise_for_status()
+    img_bytes = img_resp.content
+
+    # 파일명 추출 (대충 URL 마지막 부분에서 가져오고, 없으면 기본값)
+    if not filename:
+        base = image_url.split("?")[0].rstrip("/").split("/")[-1]
+        if not base:
+            base = "notion-image"
+        filename = base
+
+    content_type = img_resp.headers.get("Content-Type", "image/jpeg")
+
+    media_url = f"{WP_BASE_URL.rstrip('/')}/wp-json/wp/v2/media"
+    auth = (WP_USERNAME, WP_APP_PASSWORD)
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Content-Type": content_type,
+    }
+
+    print(f"[WP][IMAGE] Uploading to WP media: {media_url}, filename={filename}")
+    resp = requests.post(media_url, headers=headers, auth=auth, data=img_bytes)
+    resp.raise_for_status()
+    j = resp.json()
+    wp_image_url = j.get("source_url")
+    print(f"[WP][IMAGE] Uploaded image URL: {wp_image_url}")
+    return wp_image_url
 
 def publish_to_wordpress(title, content_html, tag_slugs=None):
     """
