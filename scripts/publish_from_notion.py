@@ -274,7 +274,7 @@ def publish_to_wordpress(title, content_html, tag_slugs=None):
     payload = {
         "title": title,
         "content": content_html,
-        "status": "draft",  # 필요하면 'draft'로 바꿔서 임시저장도 가능
+        "status": "publish",  # 필요하면 'draft'로 바꿔서 임시저장도 가능
     }
     if tag_ids:
         payload["tags"] = tag_ids
