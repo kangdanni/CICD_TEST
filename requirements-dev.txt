@@ -11,3 +11,6 @@ mypy
 
 bandit
 pip-audit
+
+requests
+dotenv
