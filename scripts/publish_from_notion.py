@@ -348,6 +348,13 @@ def publish_to_tistory_with_playwright(title, html_content):
             page.click('#publish-confirm')
             
             print(f"[Tistory] 발행 완료: {title}")
+
+        except Exception as e:
+            # 에러 발생 시 디버깅을 위해 스크린샷 저장 (GitHub Actions Artifact에서 확인 가능)
+            page.screenshot(path="tistory_error.png")
+            print(f"[Tistory] 자동 발행 실패: {e}")
+        finally:
+            browser.close()
 # ─────────────────────────────────────────────
 # Notion Status 업데이트
 # ─────────────────────────────────────────────
