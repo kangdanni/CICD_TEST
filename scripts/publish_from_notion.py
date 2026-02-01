@@ -371,35 +371,35 @@ def main():
 
     
     for page in pages:
+
+        page_id = page["id"]
+        title = get_page_title(page)
+        print(f"Processing page: {title} ({page_id})")
+    
+        # 본문 HTML 변환
+        blocks = get_page_blocks(page_id)
+        html = blocks_to_html(blocks)
+    
+        # Notion Slug -> WordPress tags
+        slugs = get_page_slugs(page)
+        print(f"[INFO] Slugs for this page: {slugs}")
+    
+        # # 1) WordPress 발행
+        # try:
+        #     wp_id, wp_link = publish_to_wordpress(title, html, tag_slugs=slugs)
+        # except Exception as e:
+        #     print(f"[ERROR] WordPress publish failed: {e}")
+        #     continue
+    
+        # 2) Tistory 발행 (필요하면 주석 해제)
         try:
-            page_id = page["id"]
-            title = get_page_title(page)
-            print(f"Processing page: {title} ({page_id})")
-    
-            # 본문 HTML 변환
-            blocks = get_page_blocks(page_id)
-            html = blocks_to_html(blocks)
-    
-            # Notion Slug -> WordPress tags
-            slugs = get_page_slugs(page)
-            print(f"[INFO] Slugs for this page: {slugs}")
-    
-            # # 1) WordPress 발행
-            # try:
-            #     wp_id, wp_link = publish_to_wordpress(title, html, tag_slugs=slugs)
-            # except Exception as e:
-            #     print(f"[ERROR] WordPress publish failed: {e}")
-            #     continue
-    
-            # 2) Tistory 발행 (필요하면 주석 해제)
             publish_to_tistory(title, html)
- 
-                    
-            # 3) Notion 상태 업데이트
-            update_page_status_to_published(page_id)
-                       
-       except Exception as e:
-        print(f"[CRITICAL ERROR] Stopping process for {title}: {e}")
+         except Exception as e:
+             print(f"[ERROR] Tistory publish failed: {e}")
+                
+        # 3) Notion 상태 업데이트
+        update_page_status_to_published(page_id)
+
          
 
     print("Done.")
