@@ -1,5 +1,7 @@
 import os
 import requests
+import time
+from playwright.sync_api import sync_playwright
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
@@ -17,6 +19,9 @@ TISTORY_ACCESS_TOKEN = os.environ["TISTORY_ACCESS_TOKEN"]
 TISTORY_BLOG_NAME = os.environ["TISTORY_BLOG_NAME"]
 WPCOM_CLIENT_ID = os.environ["WPCOM_CLIENT_ID"]
 WPCOM_CLIENT_SECRET = os.environ["WPCOM_CLIENT_SECRET"]
+KAKAO_EMAIL= os.environ["KAKAO_EMAIL"]
+KAKAO_PASSWORD = os.environ["KAKAO_PASSWORD"]
+
 
 NOTION_BASE_URL = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
@@ -300,23 +305,47 @@ def publish_to_wordpress(title, content_html, tag_slugs=None):
 # ─────────────────────────────────────────────
 # (선택) Tistory 발행
 # ─────────────────────────────────────────────
-def publish_to_tistory(title, content_html):
-    url = "https://www.tistory.com/apis/post/write"
-    data = {
-        "access_token": TISTORY_ACCESS_TOKEN,
-        "output": "json",
-        "blogName": TISTORY_BLOG_NAME,
-        "title": title,
-        "content": content_html,
-        "visibility": 3,  # 0: 비공개, 3: 발행
-    }
-    resp = requests.post(url, data=data)
-    resp.raise_for_status()
-    j = resp.json()
-    post_id = j["tistory"]["post"]["id"]
-    print(f"[Tistory] Published ID: {post_id}")
-    return post_id
 
+def publish_to_tistory_with_playwright(title, html_content):
+    
+    with sync_playwright() as p:
+        # 1. 브라우저 실행 (로컬 테스트 시 headless=False 권장)
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
+
+        # 2. 로그인 페이지 진입 및 로그인 로직
+        # ※ 카카오 로그인 창의 경우 iframe이나 복잡한 셀렉터가 있을 수 있음
+        page.goto("https://www.tistory.com/auth/login")
+        page.fill('input[name="loginId"]', "KAKAO_EMAIL") # 환경변수 사용 권장
+        page.fill('input[name="password"]', "KAKAO_PASSWORD")
+        page.click('button[type="submit"]')
+        page.wait_for_load_state("networkidle")
+
+        # 3. 글쓰기 페이지 진입 (신규 에디터)
+        # 본인의 블로그 주소로 수정 필요
+        page.goto("https://{TISTORY_BLOG_NAME}.tistory.com/manage/post/write")
+        page.wait_for_selector('#title-input') # 제목 입력창 대기
+
+        # 4. 제목 및 본문 주입
+        page.fill('#title-input', title)
+        
+        # 티스토리 에디터는 보통 iframe 내부에 있으므로 스크립트 주입이 가장 확실함
+        # 아래는 에디터 영역에 HTML을 강제로 박는 자바스크립트 예시
+        page.evaluate(f"""
+            const editor = document.querySelector('.editor-area'); 
+            if(editor) editor.innerHTML = `{html_content}`;
+        """)
+
+        # 5. 발행 버튼 클릭 및 최종 확인
+        page.click('.btn_publish') # 발행 버튼 클래스명은 시기별로 다를 수 있음
+        page.wait_for_timeout(2000)
+        page.click('#publish-confirm') # 최종 확인 버튼
+
+        print(f"[Tistory] '{title}' 포스팅 완료")
+        browser.close()
 
 # ─────────────────────────────────────────────
 # Notion Status 업데이트
@@ -362,12 +391,12 @@ def main():
             print(f"[ERROR] WordPress publish failed: {e}")
             continue
 
-        # # 2) Tistory 발행 (필요하면 주석 해제)
-        # try:
-        #     tistory_id = publish_to_tistory(title, html)
-        # except Exception as e:
-        #     print(f"[ERROR] Tistory publish failed: {e}")
-        #     continue
+        # 2) Tistory 발행 (필요하면 주석 해제)
+        try:
+            tistory_id = publish_to_tistory_with_playwright(title, html)
+        except Exception as e:
+            print(f"[ERROR] Tistory publish failed: {e}")
+            continue
 
         # 3) Notion 상태 업데이트
         try:
