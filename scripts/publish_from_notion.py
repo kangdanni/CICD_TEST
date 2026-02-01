@@ -308,51 +308,58 @@ def publish_to_wordpress(title, content_html, tag_slugs=None):
 
 def publish_to_tistory_with_playwright(title, html_content):
     with sync_playwright() as p:
-        # GitHub Actions 환경을 고려해 headless=True, 리눅스 샌드박스 비활성화
         browser = p.chromium.launch(headless=True, args=['--no-sandbox'])
+        # 실제 브라우저와 구분이 안 가도록 뷰포트와 에이전트 상세 설정
         context = browser.new_context(
+            viewport={'width': 1920, 'height': 1080},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
         page = context.new_page()
 
         try:
-            # 1. 로그인 페이지 진입
-            page.goto("https://www.tistory.com/auth/login")
+            # 1. 로그인 페이지 접속 및 대기
+            page.goto("https://www.tistory.com/auth/login", wait_until="networkidle")
             
-            # 2. 카카오 로그인 버튼 클릭 (선택자 확인 필요)
-            page.click(".link_kakao") 
-            page.wait_for_load_state("networkidle")
+            # 2. 카카오 로그인 버튼 찾기 (클래스 대신 텍스트와 구조로 접근)
+            # '카카오계정으로 로그인' 텍스트를 포함한 요소를 기다림
+            kakao_login_btn = page.wait_for_selector("text='카카오계정으로 로그인'", timeout=15000)
+            kakao_login_btn.click()
+            
+            # 3. 로그인 폼 입력 대기
+            page.wait_for_selector('input[name="loginId"]', timeout=15000)
+            page.fill('input[name="loginId"]', os.environ["KAKAO_EMAIL"])
+            page.fill('input[name="password"]', os.environ["KAKAO_PASSWORD"])
+            
+            # 로그인 제출 (엔터 키 입력이 클릭보다 더 안정적일 때가 있음)
+            page.keyboard.press("Enter")
+            
+            # 4. 로그인 완료 후 티스토리 홈으로 리다이렉트 대기
+            page.wait_for_url("**/tistory.com/**", timeout=30000)
+            print("[Tistory] Login Successful")
 
-            # 3. ID/PW 입력 및 로그인
-            # 카카오 로그인 폼의 input name은 보통 loginId, password임
-            page.fill('input[name="loginId"]', KAKAO_EMAIL)
-            page.fill('input[name="password"]', KAKAO_PASSWORD)
+            # 5. 글쓰기 관리 페이지 이동
+            page.goto(f"https://{os.environ['TISTORY_BLOG_NAME']}.tistory.com/manage/post/write", wait_until="networkidle")
             
-            # 로그인 버튼 클릭 및 대기
-            page.click('.btn_g.highlight.submit') 
-            page.wait_for_url("**/tistory.com/**", timeout=60000)
-            
-            print("[Tistory] 로그인 성공")
-
-            # 4. 글쓰기 페이지 진입 및 본문 주입
-            page.goto(f"https://{TISTORY_BLOG_NAME}.tistory.com/manage/post/write")
+            # 제목 입력창 대기 및 입력
             page.wait_for_selector('#title-input')
-            
             page.fill('#title-input', title)
-            # 에디터 내부 HTML 강제 주입
+            
+            # 에디터 HTML 주입
             page.evaluate(f'document.querySelector(".editor-area").innerHTML = `{html_content}`')
             
-            # 5. 발행 프로세스
+            # 6. 발행 절차 (발행 버튼 클릭 -> 확인 버튼 클릭)
             page.click('.btn_publish')
             page.wait_for_selector('#publish-confirm')
             page.click('#publish-confirm')
             
-            print(f"[Tistory] 발행 완료: {title}")
+            print(f"[Tistory] Successfully Published: {title}")
 
         except Exception as e:
-            # 에러 발생 시 디버깅을 위해 스크린샷 저장 (GitHub Actions Artifact에서 확인 가능)
-            page.screenshot(path="tistory_error.png")
-            print(f"[Tistory] 자동 발행 실패: {e}")
+            # 실패 시 스크린샷 저장 (가장 중요: 어디서 막혔는지 확인용)
+            page.screenshot(path="tistory_debug_screenshot.png")
+            print(f"[Tistory] Automation Failed: {e}")
+            # 보안 전문가의 팁: 실패 시에도 노션 상태가 업데이트되지 않도록 raise 처리 권장
+            raise e 
         finally:
             browser.close()
 # ─────────────────────────────────────────────
