@@ -46,3 +46,10 @@ jobs:
           
         run: |
           python scripts/publish_from_notion.py
+      # 실패 시 스크린샷 업로드 (매우 중요)
+      - name: Upload Debug Screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tistory-debug-screenshot
+          path: tistory_error_page.png
