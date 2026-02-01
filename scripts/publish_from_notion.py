@@ -307,46 +307,32 @@ def publish_to_wordpress(title, content_html, tag_slugs=None):
 # ─────────────────────────────────────────────
 
 def publish_to_tistory_with_playwright(title, html_content):
-    
     with sync_playwright() as p:
-        # 1. 브라우저 실행 (로컬 테스트 시 headless=False 권장)
+        # 로컬에서 생성한 state.json이 있어야 함
+        if not os.path.exists("state.json"):
+            print("[ERROR] Tistory state.json missing.")
+            return
+
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
+        context = browser.new_context(storage_state="state.json")
         page = context.new_page()
 
-        # 2. 로그인 페이지 진입 및 로그인 로직
-        # ※ 카카오 로그인 창의 경우 iframe이나 복잡한 셀렉터가 있을 수 있음
-        page.goto("https://www.tistory.com/auth/login")
-        page.fill('input[name="loginId"]', "KAKAO_EMAIL") # 환경변수 사용 권장
-        page.fill('input[name="password"]', "KAKAO_PASSWORD")
-        page.click('button[type="submit"]')
-        page.wait_for_load_state("networkidle")
-
-        # 3. 글쓰기 페이지 진입 (신규 에디터)
-        # 본인의 블로그 주소로 수정 필요
-        page.goto("https://{TISTORY_BLOG_NAME}.tistory.com/manage/post/write")
-        page.wait_for_selector('#title-input') # 제목 입력창 대기
-
-        # 4. 제목 및 본문 주입
-        page.fill('#title-input', title)
-        
-        # 티스토리 에디터는 보통 iframe 내부에 있으므로 스크립트 주입이 가장 확실함
-        # 아래는 에디터 영역에 HTML을 강제로 박는 자바스크립트 예시
-        page.evaluate(f"""
-            const editor = document.querySelector('.editor-area'); 
-            if(editor) editor.innerHTML = `{html_content}`;
-        """)
-
-        # 5. 발행 버튼 클릭 및 최종 확인
-        page.click('.btn_publish') # 발행 버튼 클래스명은 시기별로 다를 수 있음
-        page.wait_for_timeout(2000)
-        page.click('#publish-confirm') # 최종 확인 버튼
-
-        print(f"[Tistory] '{title}' 포스팅 완료")
-        browser.close()
-
+        try:
+            page.goto(f"https://{TISTORY_BLOG_NAME}.tistory.com/manage/post/write")
+            page.fill('#title-input', title)
+            
+            # 에디터 내부 HTML 주입 (Selector는 티스토리 업데이트에 따라 변동 가능)
+            page.evaluate(f'document.querySelector(".editor-area").innerHTML = `{html_content}`')
+            
+            page.click('.btn_publish')
+            page.wait_for_selector('#publish-confirm')
+            page.click('#publish-confirm')
+            print(f"[Tistory] Success: {title}")
+        except Exception as e:
+            print(f"[Tistory] Failed: {e}")
+        finally:
+            browser.close()
+ 
 # ─────────────────────────────────────────────
 # Notion Status 업데이트
 # ─────────────────────────────────────────────
