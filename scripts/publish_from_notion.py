@@ -314,7 +314,7 @@ def publish_to_tistory(title, html_content):
         page = context.new_page()
 
         # 로그인 과정 없이 바로 글쓰기 페이지 진입
-        page.goto(f"https://{BLOG_NAME}.tistory.com/manage/post/write")
+        page.goto(f"https://{TISTORY_BLOG_NAME}.tistory.com/manage/post/write")
         
         # 제목 및 본문 입력 (로그인 단계가 생략되므로 타임아웃 위험 급감)
         page.wait_for_selector('#title-input')
