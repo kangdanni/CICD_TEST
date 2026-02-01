@@ -22,7 +22,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
+          
+      # 2. Playwright 브라우저 및 시스템 의존성 설치 (이 단계가 핵심)
+      - name: Install Playwright Browsers
+        run: |
+          python -m playwright install chromium --with-deps
+          
       - name: Run Notion → WP/Tistory publisher
         env:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
