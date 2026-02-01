@@ -155,9 +155,16 @@ def blocks_to_html(blocks):
             caption = rich_text_to_plain(img.get("caption", []))
             try:
                 wp_img_url = upload_image_to_wordpress_from_url(img_url)
-                figure_html = f'<figure><img src="{wp_img_url}" alt="{caption}"/>'
+                # 가독성을 위해 style 추가: 최대 너비 100%, 중앙 정렬
+                # 특정 고정 크기를 원하면 width="800" 등으로 명시 가능
+                img_style = 'style="max-width: 100%; height: auto; display: block; margin: 20px auto; border-radius: 8px;"'
+                
+                figure_html = f'<figure style="text-align: center;">'
+                figure_html += f'<img src="{wp_img_url}" alt="{caption}" {img_style}/>'
+                
                 if caption:
-                    figure_html += f"<figcaption>{caption}</figcaption>"
+                    figure_html += f'<figcaption style="font-size: 0.9em; color: #666; margin-top: 8px;">{caption}</figcaption>'
+                
                 figure_html += "</figure>"
                 html_parts.append(figure_html)
             except Exception as e:
