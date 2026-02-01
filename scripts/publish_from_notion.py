@@ -306,71 +306,26 @@ def publish_to_wordpress(title, content_html, tag_slugs=None):
 # (선택) Tistory 발행
 # ─────────────────────────────────────────────
 
-def publish_to_tistory_with_playwright(title, html_content):
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, args=['--no-sandbox'])
-        # 실제 브라우저와 구분이 안 가도록 뷰포트와 에이전트 상세 설정
-        context = browser.new_context(
-            viewport={'width': 1920, 'height': 1080},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
+def publish_to_tistory(title, html_content):
+  with sync_playwright() as p:
+        # 저장된 세션을 로드하며 브라우저 시작
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(storage_state="state.json")
         page = context.new_page()
 
-        try:
-            # 1. 로그인 페이지 접속 및 대기
-            page.goto("https://www.tistory.com/auth/login", wait_until="networkidle")
-            
-            # 2. 카카오 로그인 버튼 찾기 (클래스 대신 텍스트와 구조로 접근)
-            # '카카오계정으로 로그인' 텍스트를 포함한 요소를 기다림
-            kakao_login_btn = page.wait_for_selector("text='카카오계정으로 로그인'", timeout=15000)
-            kakao_login_btn.click()
-            
-            # 3. 로그인 폼 입력 대기
-            page.wait_for_selector('input[name="loginId"]', timeout=15000)
-            page.fill('input[name="loginId"]', os.environ["KAKAO_EMAIL"])
-            page.fill('input[name="password"]', os.environ["KAKAO_PASSWORD"])
-            
-            # 클릭 전, 네트워크가 조용해질 때까지 잠시 대기 후 엔터
-            page.wait_for_timeout(1000)
-            page.keyboard.press("Enter")
+        # 로그인 과정 없이 바로 글쓰기 페이지 진입
+        page.goto(f"https://{BLOG_NAME}.tistory.com/manage/post/write")
         
-            # 4. 로그인 완료 후 티스토리 홈으로 리다이렉트 대기
-            try:
-                # 'load' 대신 'commit'이나 'domcontentloaded'를 기다려 속도 향상
-                # 또는 URL이 tistory.com을 포함할 때까지 최대 45초 대기
-                page.wait_for_url(lambda url: "tistory.com" in url and "auth" not in url, timeout=45000)
-                print("[Tistory] Login redirection confirmed")
-            except Exception as e:
-                # 타임아웃 발생 시 현재 URL과 화면 스크린샷 기록
-                print(f"[DEBUG] Current URL: {page.url}")
-                page.screenshot(path="login_timeout_debug.png")
-                raise e
-
-            # 5. 글쓰기 관리 페이지 이동
-            page.goto(f"https://{os.environ['TISTORY_BLOG_NAME']}.tistory.com/manage/post/write", wait_until="networkidle")
-            
-            # 제목 입력창 대기 및 입력
-            page.wait_for_selector('#title-input')
-            page.fill('#title-input', title)
-            
-            # 에디터 HTML 주입
-            page.evaluate(f'document.querySelector(".editor-area").innerHTML = `{html_content}`')
-            
-            # 6. 발행 절차 (발행 버튼 클릭 -> 확인 버튼 클릭)
-            page.click('.btn_publish')
-            page.wait_for_selector('#publish-confirm')
-            page.click('#publish-confirm')
-            
-            print(f"[Tistory] Successfully Published: {title}")
-
-        except Exception as e:
-            # 실패 시 스크린샷 저장 (가장 중요: 어디서 막혔는지 확인용)
-            page.screenshot(path="tistory_debug_screenshot.png")
-            print(f"[Tistory] Automation Failed: {e}")
-            # 보안 전문가의 팁: 실패 시에도 노션 상태가 업데이트되지 않도록 raise 처리 권장
-            raise e 
-        finally:
-            browser.close()
+        # 제목 및 본문 입력 (로그인 단계가 생략되므로 타임아웃 위험 급감)
+        page.wait_for_selector('#title-input')
+        page.fill('#title-input', title)
+        page.evaluate(f'document.querySelector(".editor-area").innerHTML = `{html_content}`')
+        
+        # 발행 버튼 클릭
+        page.click('.btn_publish')
+        page.wait_for_selector('#publish-confirm')
+        page.click('#publish-confirm')
+        browser.close()
 # ─────────────────────────────────────────────
 # Notion Status 업데이트
 # ─────────────────────────────────────────────
@@ -416,8 +371,11 @@ def main():
         #     continue
 
         # 2) Tistory 발행 (필요하면 주석 해제)
-        publish_to_tistory_with_playwright(title, html)
-    
+        try:
+            publish_to_tistory(title, html)
+        except Exception as e:
+           print(f"[ERROR] Tistory publish failed: {e}")
+            
         # 3) Notion 상태 업데이트
         update_page_status_to_published(page_id)
      
