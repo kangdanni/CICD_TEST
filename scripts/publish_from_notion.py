@@ -307,25 +307,44 @@ def publish_to_wordpress(title, content_html, tag_slugs=None):
 # ─────────────────────────────────────────────
 
 def publish_to_tistory(title, html_content):
-  with sync_playwright() as p:
-        # 저장된 세션을 로드하며 브라우저 시작
+    tistory_blog_name = os.getenv("TISTORY_BLOG_NAME")   
+    with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(storage_state="state.json")
         page = context.new_page()
 
-        # 로그인 과정 없이 바로 글쓰기 페이지 진입
-        page.goto(f"https://{TISTORY_BLOG_NAME}.tistory.com/manage/post/write")
-        
-        # 제목 및 본문 입력 (로그인 단계가 생략되므로 타임아웃 위험 급감)
-        page.wait_for_selector('#title-input')
-        page.fill('#title-input', title)
-        page.evaluate(f'document.querySelector(".editor-area").innerHTML = `{html_content}`')
-        
-        # 발행 버튼 클릭
-        page.click('.btn_publish')
-        page.wait_for_selector('#publish-confirm')
-        page.click('#publish-confirm')
-        browser.close()
+        try:
+            # 1. 글쓰기 페이지로 이동 (네트워크가 조용해질 때까지 대기)
+            write_url = f"https://{tistory_blog_name}.tistory.com/manage/post/write"
+            print(f"[DEBUG] Moving to: {write_url}")
+            page.goto(write_url, wait_until="networkidle", timeout=60000)
+
+            # 2. 중간에 팝업이나 공지사항이 있으면 닫기 (Optional)
+            # 티스토리는 가끔 에디터 진입 전 안내 팝업을 띄움
+            
+            # 3. 제목 입력창 대기 (더 긴 타임아웃과 가시성 확인)
+            print("[DEBUG] Waiting for #title-input...")
+            page.wait_for_selector("#title-input", state="visible", timeout=60000)
+            
+            # 4. 입력 및 발행 로직
+            page.fill("#title-input", title)
+            page.evaluate(f'document.querySelector(".editor-area").innerHTML = `{html_content}`')
+            
+            # 발행 버튼 클릭 시퀀스 (가끔 버튼이 두 번 클릭되어야 할 때가 있음)
+            page.click(".btn_publish")
+            page.wait_for_selector("#publish-confirm", state="visible")
+            page.click("#publish-confirm")
+            
+            print(f"[Tistory] Success: {title}")
+
+        except Exception as e:
+            # 실패 시 반드시 스크린샷을 찍어 확인 (GitHub Actions Artifacts에서 확인 가능)
+            page.screenshot(path="tistory_error_page.png")
+            print(f"[DEBUG] Current URL: {page.url}")
+            print(f"[Tistory] Failed: {e}")
+            raise e # 에러를 다시 던져서 노션 업데이트 방지
+        finally:
+            browser.close()
 # ─────────────────────────────────────────────
 # Notion Status 업데이트
 # ─────────────────────────────────────────────
