@@ -330,12 +330,21 @@ def publish_to_tistory_with_playwright(title, html_content):
             page.fill('input[name="loginId"]', os.environ["KAKAO_EMAIL"])
             page.fill('input[name="password"]', os.environ["KAKAO_PASSWORD"])
             
-            # 로그인 제출 (엔터 키 입력이 클릭보다 더 안정적일 때가 있음)
+            # 클릭 전, 네트워크가 조용해질 때까지 잠시 대기 후 엔터
+            page.wait_for_timeout(1000)
             page.keyboard.press("Enter")
-            
+        
             # 4. 로그인 완료 후 티스토리 홈으로 리다이렉트 대기
-            page.wait_for_url("**/tistory.com/**", timeout=30000)
-            print("[Tistory] Login Successful")
+            try:
+                # 'load' 대신 'commit'이나 'domcontentloaded'를 기다려 속도 향상
+                # 또는 URL이 tistory.com을 포함할 때까지 최대 45초 대기
+                page.wait_for_url(lambda url: "tistory.com" in url and "auth" not in url, timeout=45000)
+                print("[Tistory] Login redirection confirmed")
+            except Exception as e:
+                # 타임아웃 발생 시 현재 URL과 화면 스크린샷 기록
+                print(f"[DEBUG] Current URL: {page.url}")
+                page.screenshot(path="login_timeout_debug.png")
+                raise e
 
             # 5. 글쓰기 관리 페이지 이동
             page.goto(f"https://{os.environ['TISTORY_BLOG_NAME']}.tistory.com/manage/post/write", wait_until="networkidle")
@@ -399,26 +408,19 @@ def main():
         slugs = get_page_slugs(page)
         print(f"[INFO] Slugs for this page: {slugs}")
 
-        # 1) WordPress 발행
-        try:
-            wp_id, wp_link = publish_to_wordpress(title, html, tag_slugs=slugs)
-        except Exception as e:
-            print(f"[ERROR] WordPress publish failed: {e}")
-            continue
+        # # 1) WordPress 발행
+        # try:
+        #     wp_id, wp_link = publish_to_wordpress(title, html, tag_slugs=slugs)
+        # except Exception as e:
+        #     print(f"[ERROR] WordPress publish failed: {e}")
+        #     continue
 
         # 2) Tistory 발행 (필요하면 주석 해제)
-        try:
-            tistory_id = publish_to_tistory_with_playwright(title, html)
-        except Exception as e:
-            print(f"[ERROR] Tistory publish failed: {e}")
-            continue
-
+        publish_to_tistory_with_playwright(title, html)
+    
         # 3) Notion 상태 업데이트
-        try:
-            update_page_status_to_published(page_id)
-        except Exception as e:
-            print(f"[ERROR] Notion status update failed: {e}")
-            continue
+        update_page_status_to_published(page_id)
+     
 
     print("Done.")
 
