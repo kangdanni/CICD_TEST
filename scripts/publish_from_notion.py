@@ -308,31 +308,46 @@ def publish_to_wordpress(title, content_html, tag_slugs=None):
 
 def publish_to_tistory_with_playwright(title, html_content):
     with sync_playwright() as p:
-        # 로컬에서 생성한 state.json이 있어야 함
-        if not os.path.exists("state.json"):
-            print("[ERROR] Tistory state.json missing.")
-            return
-
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(storage_state="state.json")
+        # GitHub Actions 환경을 고려해 headless=True, 리눅스 샌드박스 비활성화
+        browser = p.chromium.launch(headless=True, args=['--no-sandbox'])
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
         page = context.new_page()
 
         try:
-            page.goto(f"https://{TISTORY_BLOG_NAME}.tistory.com/manage/post/write")
-            page.fill('#title-input', title)
+            # 1. 로그인 페이지 진입
+            page.goto("https://www.tistory.com/auth/login")
             
-            # 에디터 내부 HTML 주입 (Selector는 티스토리 업데이트에 따라 변동 가능)
+            # 2. 카카오 로그인 버튼 클릭 (선택자 확인 필요)
+            page.click(".link_kakao") 
+            page.wait_for_load_state("networkidle")
+
+            # 3. ID/PW 입력 및 로그인
+            # 카카오 로그인 폼의 input name은 보통 loginId, password임
+            page.fill('input[name="loginId"]', KAKAO_EMAIL)
+            page.fill('input[name="password"]', KAKAO_PASSWORD)
+            
+            # 로그인 버튼 클릭 및 대기
+            page.click('.btn_g.highlight.submit') 
+            page.wait_for_url("**/tistory.com/**", timeout=60000)
+            
+            print("[Tistory] 로그인 성공")
+
+            # 4. 글쓰기 페이지 진입 및 본문 주입
+            page.goto(f"https://{TISTORY_BLOG_NAME}.tistory.com/manage/post/write")
+            page.wait_for_selector('#title-input')
+            
+            page.fill('#title-input', title)
+            # 에디터 내부 HTML 강제 주입
             page.evaluate(f'document.querySelector(".editor-area").innerHTML = `{html_content}`')
             
+            # 5. 발행 프로세스
             page.click('.btn_publish')
             page.wait_for_selector('#publish-confirm')
             page.click('#publish-confirm')
-            print(f"[Tistory] Success: {title}")
-        except Exception as e:
-            print(f"[Tistory] Failed: {e}")
-        finally:
-            browser.close()
- 
+            
+            print(f"[Tistory] 발행 완료: {title}")
 # ─────────────────────────────────────────────
 # Notion Status 업데이트
 # ─────────────────────────────────────────────
