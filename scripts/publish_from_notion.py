@@ -355,17 +355,26 @@ def publish_to_tistory(title, html_content):
                 print("[WARN] iframe injection failed. Trying alternative...")
                 # (이 부분은 일단 iframe 방식이 90% 먹히므로 생략, 필요시 추가 제공)
 
-            # 4. [수정됨] 발행 버튼 클릭 프로세스 (완료 -> 발행)
+           # 4. [수정됨] '완료' 버튼 클릭 (클래스명 대신 텍스트로 찾기)
             print("[DEBUG] Clicking '완료' button...")
-            page.click(".btn_complete") # 하단 검은색 '완료' 버튼
+            # 화면 하단에 있는 '완료'라는 글자가 포함된 버튼을 찾아서 클릭
+            page.click("button:has-text('완료')") 
 
-            # 5. [수정됨] 발행 설정 레이어가 뜰 때까지 대기
-            # 레이어 안의 '공개' 라디오 버튼이 기본 체크되어 있다고 가정
+            # 5. [수정됨] 발행 설정 레이어 대기 및 최종 발행
             print("[DEBUG] Waiting for publish layer...")
-            page.wait_for_selector(".layer_post", state="visible", timeout=10000)
             
-            # 최종 발행 버튼 ('발행' 텍스트를 가진 버튼 클릭)
-            page.click("button.btn_apply") 
+            # '발행'이라는 텍스트가 포함된 버튼이 보일 때까지 대기 (레이어가 떴다는 증거)
+            # 보통 레이어 안의 최종 버튼은 '공개발행' 또는 '발행'이라고 적혀있음
+            # 라디오 버튼(공개/비공개)은 기본값이 '공개'이므로 바로 발행 눌러도 됨
+            
+            publish_btn_selector = "button:has-text('발행')"
+            page.wait_for_selector(publish_btn_selector, state="visible", timeout=10000)
+            
+            # 간혹 레이어 애니메이션 때문에 클릭이 씹힐 수 있으니 잠시 대기
+            page.wait_for_timeout(1000)
+            
+            # 최종 클릭
+            page.click(publish_btn_selector)
             
             print(f"[Tistory] Published Successfully: {title}")
 
