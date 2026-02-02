@@ -365,24 +365,30 @@ def publish_to_tistory(title, html_content):
             print("[DEBUG] Clicking '완료'...")
             page.click("button:has-text('완료')")
 
-            # 5. 설정 레이어 및 '공개' 설정
+           # ---------------------------------------------------------
+            # 5. 설정 레이어 조작 ('공개' 선택)
+            # ---------------------------------------------------------
             print("[DEBUG] Setting to Public...")
-            page.wait_for_selector(".layer_post", state="visible", timeout=10000)
-            
-            # '공개' 라디오 버튼 클릭 (실패 시 무시하고 진행하도록 try-except)
             try:
-                page.click("label:has-text('공개')", timeout=3000)
-            except:
-                print("[WARN] '공개' 클릭 실패 (이미 공개 상태이거나 UI 변경됨)")
+                # '공개' 라벨 클릭
+                page.click("label:has-text('공개')", timeout=5000)
+                
+                # [중요] 클릭 후 버튼 텍스트가 '공개 발행'으로 변할 때까지 대기
+                # 티스토리 UI가 반응할 시간을 주는 것 (가장 확실한 방법)
+                page.wait_for_selector("button.btn_apply:has-text('공개 발행')", state="visible", timeout=5000)
+                
+            except Exception as e:
+                print(f"[WARN] '공개' 설정 중 이슈 발생 (하지만 계속 진행): {e}")
 
-            page.wait_for_timeout(1000)
-
-            # 6. 최종 발행 및 페이지 이동 대기 (가장 중요)
-            print("[DEBUG] Clicking Final Publish & Waiting for navigation...")
+            # ---------------------------------------------------------
+            # 6. 최종 발행 ('공개 발행' 버튼 클릭 & 페이지 이동 대기)
+            # ---------------------------------------------------------
+            print("[DEBUG] Clicking '공개 발행' & Waiting for navigation...")
             
-            # 발행 버튼을 누르고, URL이 바뀔 때까지(글 작성이 완료될 때까지) 기다림
+            # 페이지가 이동할 때까지 대기 (타임아웃 60초 넉넉히)
             with page.expect_navigation(timeout=60000):
-                page.click(".layer_post button:has-text('공개 발행')")
+                # 네가 확인해준 정확한 텍스트 '공개 발행'을 클릭
+                page.click("button.btn_apply:has-text('공개 발행')")
                 
             print(f"[Tistory] Published Successfully! Final URL: {page.url}")
 
