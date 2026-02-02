@@ -330,7 +330,7 @@ def publish_to_tistory(title, html_content):
         page = context.new_page()
 
         try:
-            write_url = f"https://{tistory_blog_name}.tistory.com/manage/post/write"
+            write_url = f"https://{tistory_blog_name}.tistory.com/manage/newpost/?type=post&returnURL=%2Fmanage%2Fposts%2F"
             print(f"[DEBUG] Accessing: {write_url}")
             
             # 1. 페이지 이동 및 초기 로딩 대기
