@@ -382,7 +382,7 @@ def publish_to_tistory(title, html_content):
             
             # 발행 버튼을 누르고, URL이 바뀔 때까지(글 작성이 완료될 때까지) 기다림
             with page.expect_navigation(timeout=60000):
-                page.click(".layer_post button:has-text('발행')")
+                page.click(".layer_post button:has-text('공개 발행')")
                 
             print(f"[Tistory] Published Successfully! Final URL: {page.url}")
 
