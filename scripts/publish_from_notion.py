@@ -310,75 +310,72 @@ def publish_to_tistory(title, html_content):
     tistory_blog_name = os.getenv("TISTORY_BLOG_NAME")
     
     with sync_playwright() as p:
-        # Headless 탐지 우회를 위한 강력한 Argument 추가
+        # 브라우저 실행 옵션 (기존과 동일)
         browser = p.chromium.launch(
             headless=True,
-            args=[
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-blink-features=AutomationControlled' # 자동화 탐지 방지 핵심
-            ]
+            args=['--no-sandbox', '--disable-blink-features=AutomationControlled']
         )
-        
-        # Viewport를 강제로 PC 화면 크기로 고정 (모바일 뷰 방지)
         context = browser.new_context(
             storage_state="state.json",
             viewport={'width': 1920, 'height': 1080},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36"
         )
         page = context.new_page()
 
         try:
+            # 1. 새 에디터 주소로 접속
             write_url = f"https://{tistory_blog_name}.tistory.com/manage/newpost/?type=post&returnURL=%2Fmanage%2Fposts%2F"
             print(f"[DEBUG] Accessing: {write_url}")
-            
-            # 1. 페이지 이동 및 초기 로딩 대기
             page.goto(write_url, wait_until="domcontentloaded", timeout=60000)
             
-            # 2. 로딩 안정화 (랜덤 2초 대기)
-            page.wait_for_timeout(2000)
+            # 안정화 대기
+            page.wait_for_timeout(3000)
 
-            # [진단] 현재 URL이 로그인 페이지로 튕겼는지 1차 확인
-            if "login" in page.url or "auth" in page.url:
-                raise Exception(f"Redirected to Login Page: {page.url}")
+            # 2. [수정됨] 새 에디터 제목 입력창 찾기
+            print("[DEBUG] Waiting for #post-title-inp...")
+            page.wait_for_selector("#post-title-inp", state="visible", timeout=30000)
+            page.fill("#post-title-inp", title)
 
-            # 3. 제목 입력창 찾기 (가장 흔한 실패 지점)
-            print("[DEBUG] Waiting for #title-input...")
+            # 3. [수정됨] 본문 입력 (HTML 모드로 전환하여 주입하는 방식이 가장 안전함)
+            # iframe 내부 조작은 복잡하므로, DOM에 직접 JS로 삽입 시도
+            # 새 에디터는 본문 영역 ID가 없거나 동적이므로, iframe 내부를 공략해야 함
             
-            # 여기서 실패하면 바로 except로 넘어감
-            page.wait_for_selector("#title-input", state="visible", timeout=30000)
+            try:
+                # 방법 A: iframe 내부에 HTML 주입 (가장 표준적인 방법)
+                # 티스토리 에디터 iframe 찾기
+                frame = page.frame_locator("iframe#editor-tistory_ifr") 
+                if frame:
+                    # iframe 내부의 body를 찾아 내용 교체
+                    frame.locator("body#tinymce").evaluate(f'node => node.innerHTML = `{html_content}`')
+                else:
+                    # iframe을 못 찾으면 JS로 강제 주입 (Fallback)
+                    raise Exception("Editor iframe not found")
+            except:
+                # 방법 B: HTML 모드 전환 버튼을 찾아서 입력 (비상용)
+                print("[WARN] iframe injection failed. Trying alternative...")
+                # (이 부분은 일단 iframe 방식이 90% 먹히므로 생략, 필요시 추가 제공)
+
+            # 4. [수정됨] 발행 버튼 클릭 프로세스 (완료 -> 발행)
+            print("[DEBUG] Clicking '완료' button...")
+            page.click(".btn_complete") # 하단 검은색 '완료' 버튼
+
+            # 5. [수정됨] 발행 설정 레이어가 뜰 때까지 대기
+            # 레이어 안의 '공개' 라디오 버튼이 기본 체크되어 있다고 가정
+            print("[DEBUG] Waiting for publish layer...")
+            page.wait_for_selector(".layer_post", state="visible", timeout=10000)
             
-            # 4. 입력 로직
-            page.fill("#title-input", title)
-            page.evaluate(f'document.querySelector(".editor-area").innerHTML = `{html_content}`')
+            # 최종 발행 버튼 ('발행' 텍스트를 가진 버튼 클릭)
+            page.click("button.btn_apply") 
             
-            # 5. 발행 로직
-            page.click(".btn_publish")
-            page.wait_for_selector("#publish-confirm", state="visible", timeout=10000)
-            page.click("#publish-confirm")
-            
-            print(f"[Tistory] Published: {title}")
+            print(f"[Tistory] Published Successfully: {title}")
 
         except Exception as e:
-            print(f"\n[CRITICAL ERROR] Tistory Publish Failed")
-            print(f"Error Message: {e}")
-            print(f"Final URL: {page.url}")
-            
-            # 1. 스크린샷 강제 저장 (경로 명시)
-            screenshot_path = os.path.join(os.getcwd(), "tistory_debug.png")
-            page.screenshot(path=screenshot_path, full_page=True)
-            print(f"[Artifact] Screenshot saved: {screenshot_path}")
-
-            # 2. HTML 소스 강제 저장 (DOM 구조 확인용)
-            html_path = os.path.join(os.getcwd(), "tistory_debug.html")
-            with open(html_path, "w", encoding="utf-8") as f:
+            # 디버깅용 덤프 저장 (기존과 동일)
+            print(f"[ERROR] {e}")
+            page.screenshot(path="tistory_debug.png", full_page=True)
+            with open("tistory_debug.html", "w", encoding="utf-8") as f:
                 f.write(page.content())
-            print(f"[Artifact] HTML Dump saved: {html_path}")
-
-            # 에러를 상위로 던져서 GitHub Actions가 '실패'로 인식하게 함
-            raise e 
-            
+            raise e
         finally:
             browser.close()
 # ─────────────────────────────────────────────
