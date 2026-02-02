@@ -310,11 +310,11 @@ def publish_to_tistory(title, html_content):
     tistory_blog_name = os.getenv("TISTORY_BLOG_NAME")
     
     with sync_playwright() as p:
-        # 브라우저 실행 옵션 (기존과 동일)
         browser = p.chromium.launch(
             headless=True,
             args=['--no-sandbox', '--disable-blink-features=AutomationControlled']
         )
+        # 뷰포트를 크게 잡아야 에디터 UI가 꼬이지 않음
         context = browser.new_context(
             storage_state="state.json",
             viewport={'width': 1920, 'height': 1080},
@@ -323,67 +323,73 @@ def publish_to_tistory(title, html_content):
         page = context.new_page()
 
         try:
-            # 1. 새 에디터 주소로 접속
+            # 1. 새 에디터 접속
             write_url = f"https://{tistory_blog_name}.tistory.com/manage/newpost/?type=post&returnURL=%2Fmanage%2Fposts%2F"
             print(f"[DEBUG] Accessing: {write_url}")
             page.goto(write_url, wait_until="domcontentloaded", timeout=60000)
-            
-            # 안정화 대기
-            page.wait_for_timeout(3000)
+            page.wait_for_timeout(3000) # 에디터 로딩 안정화
 
-            # 2. [수정됨] 새 에디터 제목 입력창 찾기
-            print("[DEBUG] Waiting for #post-title-inp...")
+            # 2. 제목 입력
+            print("[DEBUG] Writing Title...")
             page.wait_for_selector("#post-title-inp", state="visible", timeout=30000)
             page.fill("#post-title-inp", title)
 
-            # 3. [수정됨] 본문 입력 (HTML 모드로 전환하여 주입하는 방식이 가장 안전함)
-            # iframe 내부 조작은 복잡하므로, DOM에 직접 JS로 삽입 시도
-            # 새 에디터는 본문 영역 ID가 없거나 동적이므로, iframe 내부를 공략해야 함
+            # 3. [핵심] 본문 주입 및 '더미 타이핑'
+            print("[DEBUG] Injecting Content into Iframe...")
             
+            # iframe 핸들 확보
+            frame_element = page.wait_for_selector("iframe#editor-tistory_ifr", state="attached", timeout=30000)
+            frame = frame_element.content_frame()
+            
+            # 3-1. HTML 강제 주입 (body#tinymce)
+            body_selector = "body#tinymce"
+            frame.wait_for_selector(body_selector, timeout=10000)
+            
+            # JS로 내용을 덮어씌움
+            frame.evaluate(f'(html) => {{ document.querySelector("{body_selector}").innerHTML = html; }}', html_content)
+            
+            # 3-2. [중요] 에디터를 깨우기 위한 키보드 액션
+            # 본문을 클릭해서 포커스를 줌
+            frame.click(body_selector)
+            page.wait_for_timeout(500)
+            
+            # 끝에 공백 하나 넣었다가 지움 (Change 이벤트 발생 유도)
+            frame.press(body_selector, "End") # 커서를 맨 뒤로
+            frame.type(body_selector, " ")    # 공백 입력
+            page.wait_for_timeout(100)
+            frame.press(body_selector, "Backspace") # 공백 삭제
+            
+            print("[DEBUG] Content Injection & Event Trigger Complete.")
+            
+            # 4. 발행 시작 ('완료' 버튼)
+            print("[DEBUG] Clicking '완료'...")
+            page.click("button:has-text('완료')")
+
+            # 5. 설정 레이어 및 '공개' 설정
+            print("[DEBUG] Setting to Public...")
+            page.wait_for_selector(".layer_post", state="visible", timeout=10000)
+            
+            # '공개' 라디오 버튼 클릭 (실패 시 무시하고 진행하도록 try-except)
             try:
-                # 방법 A: iframe 내부에 HTML 주입 (가장 표준적인 방법)
-                # 티스토리 에디터 iframe 찾기
-                frame = page.frame_locator("iframe#editor-tistory_ifr") 
-                if frame:
-                    # iframe 내부의 body를 찾아 내용 교체
-                    frame.locator("body#tinymce").evaluate(f'node => node.innerHTML = `{html_content}`')
-                else:
-                    # iframe을 못 찾으면 JS로 강제 주입 (Fallback)
-                    raise Exception("Editor iframe not found")
+                page.click("label:has-text('공개')", timeout=3000)
             except:
-                # 방법 B: HTML 모드 전환 버튼을 찾아서 입력 (비상용)
-                print("[WARN] iframe injection failed. Trying alternative...")
-                # (이 부분은 일단 iframe 방식이 90% 먹히므로 생략, 필요시 추가 제공)
+                print("[WARN] '공개' 클릭 실패 (이미 공개 상태이거나 UI 변경됨)")
 
-           # 4. [수정됨] '완료' 버튼 클릭 (클래스명 대신 텍스트로 찾기)
-            print("[DEBUG] Clicking '완료' button...")
-            # 화면 하단에 있는 '완료'라는 글자가 포함된 버튼을 찾아서 클릭
-            page.click("button:has-text('완료')") 
-
-            # 5. [수정됨] 발행 설정 레이어 대기 및 최종 발행
-            print("[DEBUG] Waiting for publish layer...")
-            
-            # '발행'이라는 텍스트가 포함된 버튼이 보일 때까지 대기 (레이어가 떴다는 증거)
-            # 보통 레이어 안의 최종 버튼은 '공개발행' 또는 '발행'이라고 적혀있음
-            # 라디오 버튼(공개/비공개)은 기본값이 '공개'이므로 바로 발행 눌러도 됨
-            
-            publish_btn_selector = "button:has-text('발행')"
-            page.wait_for_selector(publish_btn_selector, state="visible", timeout=10000)
-            
-            # 간혹 레이어 애니메이션 때문에 클릭이 씹힐 수 있으니 잠시 대기
             page.wait_for_timeout(1000)
+
+            # 6. 최종 발행 및 페이지 이동 대기 (가장 중요)
+            print("[DEBUG] Clicking Final Publish & Waiting for navigation...")
             
-            # 최종 클릭
-            page.click(publish_btn_selector)
-            
-            print(f"[Tistory] Published Successfully: {title}")
+            # 발행 버튼을 누르고, URL이 바뀔 때까지(글 작성이 완료될 때까지) 기다림
+            with page.expect_navigation(timeout=60000):
+                page.click(".layer_post button:has-text('발행')")
+                
+            print(f"[Tistory] Published Successfully! Final URL: {page.url}")
 
         except Exception as e:
-            # 디버깅용 덤프 저장 (기존과 동일)
             print(f"[ERROR] {e}")
+            # 디버깅용 스크린샷 (본문이 들어갔는지 확인용)
             page.screenshot(path="tistory_debug.png", full_page=True)
-            with open("tistory_debug.html", "w", encoding="utf-8") as f:
-                f.write(page.content())
             raise e
         finally:
             browser.close()
