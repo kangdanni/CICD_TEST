@@ -430,11 +430,12 @@ def main():
         # 2) Tistory 발행 (필요하면 주석 해제)
         try:
             publish_to_tistory(title, html)
+                       
+            # 3) Notion 상태 업데이트
+            update_page_status_to_published(page_id)
         except Exception as e:
             print(f"[ERROR] Tistory publish failed: {e}")
-                
-        # 3) Notion 상태 업데이트
-        update_page_status_to_published(page_id)
+     
 
          
 
