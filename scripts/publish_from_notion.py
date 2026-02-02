@@ -307,42 +307,78 @@ def publish_to_wordpress(title, content_html, tag_slugs=None):
 # ─────────────────────────────────────────────
 
 def publish_to_tistory(title, html_content):
-    tistory_blog_name = os.getenv("TISTORY_BLOG_NAME")   
+    tistory_blog_name = os.getenv("TISTORY_BLOG_NAME")
+    
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(storage_state="state.json")
+        # Headless 탐지 우회를 위한 강력한 Argument 추가
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-blink-features=AutomationControlled' # 자동화 탐지 방지 핵심
+            ]
+        )
+        
+        # Viewport를 강제로 PC 화면 크기로 고정 (모바일 뷰 방지)
+        context = browser.new_context(
+            storage_state="state.json",
+            viewport={'width': 1920, 'height': 1080},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+        )
         page = context.new_page()
 
         try:
-            # 1. 글쓰기 페이지로 이동 (네트워크가 조용해질 때까지 대기)
             write_url = f"https://{tistory_blog_name}.tistory.com/manage/post/write"
-            print(f"[DEBUG] Moving to: {write_url}")
-            page.goto(write_url, wait_until="networkidle", timeout=60000)
+            print(f"[DEBUG] Accessing: {write_url}")
+            
+            # 1. 페이지 이동 및 초기 로딩 대기
+            page.goto(write_url, wait_until="domcontentloaded", timeout=60000)
+            
+            # 2. 로딩 안정화 (랜덤 2초 대기)
+            page.wait_for_timeout(2000)
 
-            # 2. 중간에 팝업이나 공지사항이 있으면 닫기 (Optional)
-            # 티스토리는 가끔 에디터 진입 전 안내 팝업을 띄움
-            
-            # 3. 제목 입력창 대기 (더 긴 타임아웃과 가시성 확인)
+            # [진단] 현재 URL이 로그인 페이지로 튕겼는지 1차 확인
+            if "login" in page.url or "auth" in page.url:
+                raise Exception(f"Redirected to Login Page: {page.url}")
+
+            # 3. 제목 입력창 찾기 (가장 흔한 실패 지점)
             print("[DEBUG] Waiting for #title-input...")
-            page.wait_for_selector("#title-input", state="visible", timeout=60000)
             
-            # 4. 입력 및 발행 로직
+            # 여기서 실패하면 바로 except로 넘어감
+            page.wait_for_selector("#title-input", state="visible", timeout=30000)
+            
+            # 4. 입력 로직
             page.fill("#title-input", title)
             page.evaluate(f'document.querySelector(".editor-area").innerHTML = `{html_content}`')
             
-            # 발행 버튼 클릭 시퀀스 (가끔 버튼이 두 번 클릭되어야 할 때가 있음)
+            # 5. 발행 로직
             page.click(".btn_publish")
-            page.wait_for_selector("#publish-confirm", state="visible")
+            page.wait_for_selector("#publish-confirm", state="visible", timeout=10000)
             page.click("#publish-confirm")
             
-            print(f"[Tistory] Success: {title}")
+            print(f"[Tistory] Published: {title}")
 
         except Exception as e:
-            # 실패 시 반드시 스크린샷을 찍어 확인 (GitHub Actions Artifacts에서 확인 가능)
-            page.screenshot(path="tistory_error_page.png")
-            print(f"[DEBUG] Current URL: {page.url}")
-            print(f"[Tistory] Failed: {e}")
-            raise e # 에러를 다시 던져서 노션 업데이트 방지
+            print(f"\n[CRITICAL ERROR] Tistory Publish Failed")
+            print(f"Error Message: {e}")
+            print(f"Final URL: {page.url}")
+            
+            # 1. 스크린샷 강제 저장 (경로 명시)
+            screenshot_path = os.path.join(os.getcwd(), "tistory_debug.png")
+            page.screenshot(path=screenshot_path, full_page=True)
+            print(f"[Artifact] Screenshot saved: {screenshot_path}")
+
+            # 2. HTML 소스 강제 저장 (DOM 구조 확인용)
+            html_path = os.path.join(os.getcwd(), "tistory_debug.html")
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(page.content())
+            print(f"[Artifact] HTML Dump saved: {html_path}")
+
+            # 에러를 상위로 던져서 GitHub Actions가 '실패'로 인식하게 함
+            raise e 
+            
         finally:
             browser.close()
 # ─────────────────────────────────────────────
