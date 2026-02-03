@@ -383,15 +383,32 @@ def publish_to_tistory(title, html_content):
             # ---------------------------------------------------------
             # 6. 최종 발행 ('공개 발행' 버튼 클릭 & 페이지 이동 대기)
             # ---------------------------------------------------------
-            print("[DEBUG] Clicking '공개 발행' & Waiting for navigation...")
-            
-            # 페이지가 이동할 때까지 대기 (타임아웃 60초 넉넉히)
-            with page.expect_navigation(timeout=60000):
-                # 네가 확인해준 정확한 텍스트 '공개 발행'을 클릭
-                page.click("button.btn_apply:has-text('공개 발행')")
-                
-            print(f"[Tistory] Published Successfully! Final URL: {page.url}")
+            print("[DEBUG] Trying JS Force Click on '공개 발행'...")
 
+            # Playwright의 일반 클릭(.click) 대신, 브라우저 내부 스크립트를 직접 실행
+            # 이 방법은 버튼 위에 투명한 레이어가 있거나, 클래스명이 달라도 무조건 뚫림
+            page.evaluate("""
+                () => {
+                    // 화면의 모든 버튼과 a 태그를 가져옴
+                    const buttons = Array.from(document.querySelectorAll('button, a'));
+                    
+                    // 그 중에서 텍스트에 '공개 발행'이 포함된 녀석을 찾음
+                    const target = buttons.find(b => b.innerText.includes('공개 발행'));
+                    
+                    if (target) {
+                        target.click(); // 찾았으면 바로 클릭!
+                    } else {
+                        throw new Error("JS Error: '공개 발행' 버튼을 찾을 수 없습니다.");
+                    }
+                }
+            """)
+
+            # 페이지가 이동하거나 URL이 변할 때까지 대기
+            # (발행 후에는 보통 글 보기 페이지나 관리자 목록으로 이동함)
+            print("[DEBUG] Waiting for navigation after JS Click...")
+            page.wait_for_url(lambda url: "entry" in url or "manage/posts" in url, timeout=60000)
+
+            print(f"[Tistory] Published Successfully! Final URL: {page.url}")
         except Exception as e:
             print(f"[ERROR] {e}")
             # 디버깅용 스크린샷 (본문이 들어갔는지 확인용)
