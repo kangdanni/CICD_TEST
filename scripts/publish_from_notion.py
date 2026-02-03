@@ -1,5 +1,7 @@
 import os
 import requests
+import time
+from playwright.sync_api import sync_playwright
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
@@ -17,6 +19,9 @@ TISTORY_ACCESS_TOKEN = os.environ["TISTORY_ACCESS_TOKEN"]
 TISTORY_BLOG_NAME = os.environ["TISTORY_BLOG_NAME"]
 WPCOM_CLIENT_ID = os.environ["WPCOM_CLIENT_ID"]
 WPCOM_CLIENT_SECRET = os.environ["WPCOM_CLIENT_SECRET"]
+KAKAO_EMAIL= os.environ["KAKAO_EMAIL"]
+KAKAO_PASSWORD = os.environ["KAKAO_PASSWORD"]
+
 
 NOTION_BASE_URL = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
@@ -300,24 +305,117 @@ def publish_to_wordpress(title, content_html, tag_slugs=None):
 # ─────────────────────────────────────────────
 # (선택) Tistory 발행
 # ─────────────────────────────────────────────
-def publish_to_tistory(title, content_html):
-    url = "https://www.tistory.com/apis/post/write"
-    data = {
-        "access_token": TISTORY_ACCESS_TOKEN,
-        "output": "json",
-        "blogName": TISTORY_BLOG_NAME,
-        "title": title,
-        "content": content_html,
-        "visibility": 3,  # 0: 비공개, 3: 발행
-    }
-    resp = requests.post(url, data=data)
-    resp.raise_for_status()
-    j = resp.json()
-    post_id = j["tistory"]["post"]["id"]
-    print(f"[Tistory] Published ID: {post_id}")
-    return post_id
 
+def publish_to_tistory(title, html_content):
+    tistory_blog_name = os.getenv("TISTORY_BLOG_NAME")
+    
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=True,
+            args=['--no-sandbox', '--disable-blink-features=AutomationControlled']
+        )
+        # 뷰포트를 크게 잡아야 에디터 UI가 꼬이지 않음
+        context = browser.new_context(
+            storage_state="state.json",
+            viewport={'width': 1920, 'height': 1080},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
 
+        try:
+            # 1. 새 에디터 접속
+            write_url = f"https://{tistory_blog_name}.tistory.com/manage/newpost/?type=post&returnURL=%2Fmanage%2Fposts%2F"
+            print(f"[DEBUG] Accessing: {write_url}")
+            page.goto(write_url, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(3000) # 에디터 로딩 안정화
+
+            # 2. 제목 입력
+            print("[DEBUG] Writing Title...")
+            page.wait_for_selector("#post-title-inp", state="visible", timeout=30000)
+            page.fill("#post-title-inp", title)
+
+            # 3. [핵심] 본문 주입 및 '더미 타이핑'
+            print("[DEBUG] Injecting Content into Iframe...")
+            
+            # iframe 핸들 확보
+            frame_element = page.wait_for_selector("iframe#editor-tistory_ifr", state="attached", timeout=30000)
+            frame = frame_element.content_frame()
+            
+            # 3-1. HTML 강제 주입 (body#tinymce)
+            body_selector = "body#tinymce"
+            frame.wait_for_selector(body_selector, timeout=10000)
+            
+            # JS로 내용을 덮어씌움
+            frame.evaluate(f'(html) => {{ document.querySelector("{body_selector}").innerHTML = html; }}', html_content)
+            
+            # 3-2. [중요] 에디터를 깨우기 위한 키보드 액션
+            # 본문을 클릭해서 포커스를 줌
+            frame.click(body_selector)
+            page.wait_for_timeout(500)
+            
+            # 끝에 공백 하나 넣었다가 지움 (Change 이벤트 발생 유도)
+            frame.press(body_selector, "End") # 커서를 맨 뒤로
+            frame.type(body_selector, " ")    # 공백 입력
+            page.wait_for_timeout(100)
+            frame.press(body_selector, "Backspace") # 공백 삭제
+            
+            print("[DEBUG] Content Injection & Event Trigger Complete.")
+            
+            # 4. 발행 시작 ('완료' 버튼)
+            print("[DEBUG] Clicking '완료'...")
+            page.click("button:has-text('완료')")
+
+           # ---------------------------------------------------------
+            # 5. 설정 레이어 조작 ('공개' 선택)
+            # ---------------------------------------------------------
+            print("[DEBUG] Setting to Public...")
+            try:
+                # '공개' 라벨 클릭
+                page.click("label:has-text('공개')", timeout=5000)
+                
+                # [중요] 클릭 후 버튼 텍스트가 '공개 발행'으로 변할 때까지 대기
+                # 티스토리 UI가 반응할 시간을 주는 것 (가장 확실한 방법)
+                page.wait_for_selector("button.btn_apply:has-text('공개 발행')", state="visible", timeout=5000)
+                
+            except Exception as e:
+                print(f"[WARN] '공개' 설정 중 이슈 발생 (하지만 계속 진행): {e}")
+
+            # ---------------------------------------------------------
+            # 6. 최종 발행 ('공개 발행' 버튼 클릭 & 페이지 이동 대기)
+            # ---------------------------------------------------------
+            print("[DEBUG] Trying JS Force Click on '공개 발행'...")
+
+            # Playwright의 일반 클릭(.click) 대신, 브라우저 내부 스크립트를 직접 실행
+            # 이 방법은 버튼 위에 투명한 레이어가 있거나, 클래스명이 달라도 무조건 뚫림
+            page.evaluate("""
+                () => {
+                    // 화면의 모든 버튼과 a 태그를 가져옴
+                    const buttons = Array.from(document.querySelectorAll('button, a'));
+                    
+                    // 그 중에서 텍스트에 '공개 발행'이 포함된 녀석을 찾음
+                    const target = buttons.find(b => b.innerText.includes('공개 발행'));
+                    
+                    if (target) {
+                        target.click(); // 찾았으면 바로 클릭!
+                    } else {
+                        throw new Error("JS Error: '공개 발행' 버튼을 찾을 수 없습니다.");
+                    }
+                }
+            """)
+
+            # 페이지가 이동하거나 URL이 변할 때까지 대기
+            # (발행 후에는 보통 글 보기 페이지나 관리자 목록으로 이동함)
+            print("[DEBUG] Waiting for navigation after JS Click...")
+            page.wait_for_url(lambda url: "entry" in url or "manage/posts" in url, timeout=60000)
+
+            print(f"[Tistory] Published Successfully! Final URL: {page.url}")
+        except Exception as e:
+            print(f"[ERROR] {e}")
+            # 디버깅용 스크린샷 (본문이 들어갔는지 확인용)
+            page.screenshot(path="tistory_debug.png", full_page=True)
+            raise e
+        finally:
+            browser.close()
 # ─────────────────────────────────────────────
 # Notion Status 업데이트
 # ─────────────────────────────────────────────
@@ -342,39 +440,39 @@ def main():
     pages = get_ready_pages()
     print(f"Found {len(pages)} Ready pages")
 
+    
     for page in pages:
+
         page_id = page["id"]
         title = get_page_title(page)
         print(f"Processing page: {title} ({page_id})")
-
+    
         # 본문 HTML 변환
         blocks = get_page_blocks(page_id)
         html = blocks_to_html(blocks)
-
+    
         # Notion Slug -> WordPress tags
         slugs = get_page_slugs(page)
         print(f"[INFO] Slugs for this page: {slugs}")
-
-        # 1) WordPress 발행
-        try:
-            wp_id, wp_link = publish_to_wordpress(title, html, tag_slugs=slugs)
-        except Exception as e:
-            print(f"[ERROR] WordPress publish failed: {e}")
-            continue
-
-        # # 2) Tistory 발행 (필요하면 주석 해제)
+    
+        # # 1) WordPress 발행
         # try:
-        #     tistory_id = publish_to_tistory(title, html)
+        #     wp_id, wp_link = publish_to_wordpress(title, html, tag_slugs=slugs)
         # except Exception as e:
-        #     print(f"[ERROR] Tistory publish failed: {e}")
+        #     print(f"[ERROR] WordPress publish failed: {e}")
         #     continue
-
-        # 3) Notion 상태 업데이트
+    
+        # 2) Tistory 발행 (필요하면 주석 해제)
         try:
+            publish_to_tistory(title, html)
+                       
+            # 3) Notion 상태 업데이트
             update_page_status_to_published(page_id)
         except Exception as e:
-            print(f"[ERROR] Notion status update failed: {e}")
-            continue
+            print(f"[ERROR] Tistory publish failed: {e}")
+     
+
+         
 
     print("Done.")
 
